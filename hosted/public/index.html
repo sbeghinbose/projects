@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MCQ Portal - Login</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #f4f6f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 340px; }
+        h2 { margin-top: 0; text-align: center; }
+        input, select, button { width: 100%; padding: 10px; margin: 8px 0; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
+        button { background: #2563eb; color: white; border: none; font-weight: bold; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+        .toggle { text-align: center; margin-top: 10px; font-size: 0.9rem; color: #2563eb; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2 id="form-title">Portal Login</h2>
+        <input type="text" id="username" placeholder="Username" required>
+        <input type="password" id="password" placeholder="Password" required>
+
+        <button onclick="handleAuth()" id="submit-btn">Login</button>
+        <div class="toggle" onclick="toggleMode()" id="toggle-text">Students: Register here</div>
+        <p id="msg" style="color: red; text-align: center; font-size: 0.9rem;"></p>
+    </div>
+
+    <script>
+        let isRegister = false;
+        function toggleMode() {
+            isRegister = !isRegister;
+            document.getElementById('form-title').innerText = isRegister ? 'Register Student Account' : 'Portal Login';
+            document.getElementById('submit-btn').innerText = isRegister ? 'Register' : 'Login';
+            document.getElementById('toggle-text').innerText = isRegister ? 'Already have an account? Login' : 'Students: Register here';
+            document.getElementById('msg').innerText = '';
+        }
+
+        async function handleAuth() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const role = 'student';
+            const endpoint = isRegister ? '/api/register' : '/api/login';
+
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password, role })
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                document.getElementById('msg').style.color = 'red';
+                document.getElementById('msg').innerText = data.error;
+                return;
+            }
+
+            if (isRegister) {
+                toggleMode();
+                document.getElementById('msg').style.color = 'green';
+                document.getElementById('msg').innerText = data.message;
+            } else {
+                window.location.href = data.role === 'staff' ? '/staff.html' : '/student.html';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Staff Dashboard</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #f4f6f9; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        .card { background: white; padding: 1.5rem; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+        input, select, textarea, button { width: 100%; padding: 10px; margin: 6px 0; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
+        button { background: #16a34a; color: white; border: none; font-weight: bold; cursor: pointer; }
+        button.logout { background: #dc2626; width: auto; padding: 8px 16px; }
+        .q-item { border-bottom: 1px solid #eee; padding: 10px 0; }
+    select {width:100%;padding:12px;margin:8px 0 16px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;background:white;} label{font-weight:600;} .q-item{line-height:1.7;} </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Staff Dashboard</h2>
+        <button class="logout" onclick="logout()">Logout</button>
+    </div>
+
+<div class="card"><h2>IGCSE O Level Computer Science</h2><p>500 MCQs · 10 topics · 50 questions per topic</p><label for="paperSelect">Main heading / Paper</label><select id="paperSelect" onchange="updateTopics()"></select><label for="topicSelect">Topic heading</label><select id="topicSelect" onchange="topicChanged()"></select><p id="topicSummary"></p></div>
+    <div class="card">
+        <h3>Add Single MCQ</h3>
+        <input type="text" id="question" placeholder="Enter question">
+        <input type="text" id="optA" placeholder="Option A">
+        <input type="text" id="optB" placeholder="Option B">
+        <input type="text" id="optC" placeholder="Option C">
+        <input type="text" id="optD" placeholder="Option D">
+        <select id="correct">
+            <option value="A">Correct Answer: A</option>
+            <option value="B">Correct Answer: B</option>
+            <option value="C">Correct Answer: C</option>
+            <option value="D">Correct Answer: D</option>
+        </select>
+        <button onclick="addQuestion()">Upload Question</button>
+    </div>
+
+    <div class="card">
+        <h3>Bulk Upload MCQs (JSON)</h3>
+        <textarea id="bulkJson" rows="5" placeholder='[{"question":"2+2?","option_a":"3","option_b":"4","option_c":"5","option_d":"6","correct_option":"B"}]'></textarea>
+        <button onclick="bulkUpload()">Upload Bulk JSON</button>
+    </div>
+
+    <div class="card">
+        <h3>Question Bank (<span id="qCount">0</span>)</h3>
+        <div id="questionList"></div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        checkAuth('staff');
+        loadTopics();
+    </script>
+</body>
+</html>

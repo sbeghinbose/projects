@@ -1,0 +1,1 @@
+{"name":"igcse-mcq-hosted","version":"1.0.0","type":"module","scripts":{"build":"node build.mjs"},"dependencies":{"bcryptjs":"2.4.3"},"devDependencies":{"esbuild":"^0.25.0"}}
