@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Student Dashboard</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #f4f6f9; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        .card { background: white; padding: 1.5rem; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+        button { background: #2563eb; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        button.logout { background: #dc2626; }
+        .option { display: block; margin: 6px 0; cursor: pointer; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border-bottom: 1px solid #ddd; padding: 10px; text-align: left; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2 id="welcomeText">Student Dashboard</h2>
+        <button class="logout" onclick="logout()">Logout</button>
+    </div>
+
+    <!-- Score & Reattempt Section -->
+    <div class="card" id="dashboardView">
+        <h3>Your Quiz Performance</h3>
+        <button onclick="startQuiz()">Start / Reattempt Random Quiz</button>
+        <table>
+            <thead>
+                <tr>
+                    <th>Attempt #</th>
+                    <th>Score</th>
+                    <th>Percentage</th>
+                    <th>Date & Time</th>
+                </tr>
+            </thead>
+            <tbody id="scoreHistory"></tbody>
+        </table>
+    </div>
+
+    <!-- Active Quiz Section -->
+    <div class="card" id="quizView" style="display:none;">
+        <h3>Randomized MCQ Test</h3>
+        <div id="quizContainer"></div>
+        <button onclick="submitQuiz()" style="margin-top: 15px; background: #16a34a;">Submit Answers</button>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        checkAuth('student');
+        loadScores();
+    </script>
+</body>
+</html>
