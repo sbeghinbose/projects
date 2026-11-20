@@ -23,6 +23,16 @@ async function initialize(env){
  for(const s of initial.scores) await env.DB.prepare('INSERT OR IGNORE INTO scores(id,student_id,score,total,attempted_at,topic,review_json) VALUES (?,?,?,?,?,?,?)').bind(s.id,s.student_id,s.score,s.total,s.attempted_at,s.topic,s.review_json).run();
  await env.DB.prepare("INSERT OR IGNORE INTO metadata(key,value) VALUES ('initialized-v1','done')").run();
 }
+async function initializeAdmin(env){
+ if(!env.ADMIN_USERNAME || !env.ADMIN_PASSWORD_HASH)return;
+ if(await env.DB.prepare("SELECT value FROM metadata WHERE key='admin-initialized-v1'").first())return;
+ await env.DB.prepare("INSERT OR IGNORE INTO users(username,password,role,display_name) VALUES (?,?,'admin','Portal Administrator')").bind(env.ADMIN_USERNAME,env.ADMIN_PASSWORD_HASH).run();
+ const admin=await env.DB.prepare('SELECT role FROM users WHERE username=?').bind(env.ADMIN_USERNAME).first();
+ if(admin?.role!=='admin')throw new Error('Administrator username is already in use');
+ await env.DB.prepare("INSERT OR IGNORE INTO metadata(key,value) VALUES ('admin-initialized-v1','done')").run();
+}
+const staffView=u=>({id:u.id,username:u.username,name:u.display_name||u.username,subjectTitle:u.subject_title||'',paper:u.assigned_paper||'',canUpload:!!u.can_upload,active:!!u.is_active});
+const staffFields=b=>typeof b.name==='string'&&b.name.trim()&&b.name.length<=120&&typeof b.subjectTitle==='string'&&b.subjectTitle.trim()&&b.subjectTitle.length<=160&&typeof b.paper==='string'&&b.paper.trim()&&b.paper.length<=80&&typeof b.canUpload==='boolean'&&typeof b.active==='boolean';
 const cookie=(token,age=28800)=>`mcq_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
 const result=row=>({id:row.id,score:row.score,total:row.total,topic:row.topic,marks:row.score*2,totalMarks:row.total*2,review:row.review_json?JSON.parse(row.review_json):null});
 const validQuestion=q=>q&&['question','option_a','option_b','option_c','option_d'].every(k=>typeof q[k]==='string'&&q[k].trim())&&typeof q.correct_option==='string'&&/^[ABCD]$/i.test(q.correct_option);
@@ -34,9 +44,10 @@ async function handle(request,env){
  if(method==='POST'&&request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)return json({error:'Invalid origin'},403);
  if(Number(request.headers.get('Content-Length')||0)>250000)return json({error:'Request too large'},413);
  await initialize(env);
+ await initializeAdmin(env);
  const rawToken=request.headers.get('Cookie')?.match(/(?:^|;\s*)mcq_session=([a-f0-9]{64})(?:;|$)/)?.[1];
  const token=rawToken?await digest(rawToken):null;
- const login=token?await env.DB.prepare('SELECT sessions.token,sessions.quiz_json,users.id,users.username,users.role FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=? AND sessions.expires>?').bind(token,Date.now()).first():null;
+ const login=token?await env.DB.prepare('SELECT sessions.token,sessions.quiz_json,users.id,users.username,users.role,users.display_name,users.subject_title,users.assigned_paper,users.can_upload,users.is_active FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=? AND sessions.expires>? AND users.is_active=1').bind(token,Date.now()).first():null;
  let body={};
  if(method==='POST'){try{body=await request.json();if(!body||typeof body!=='object'||Array.isArray(body))throw Error()}catch{return json({error:'Invalid request'},400)}}
  if(route==='/api/register'&&method==='POST'){
@@ -48,7 +59,8 @@ async function handle(request,env){
  if(route==='/api/login'&&method==='POST'){
   if(typeof body.username!=='string'||typeof body.password!=='string'||body.password.length>256)return json({error:'Invalid credentials'},401);
   const u=await env.DB.prepare('SELECT * FROM users WHERE username=?').bind(body.username.trim()).first();
-  if(!u||!await verify(body.password,u.password))return json({error:'Invalid credentials'},401);
+  if(!u||!u.is_active||!await verify(body.password,u.password))return json({error:'Invalid credentials'},401);
+  if(body.portal && body.portal!==u.role)return json({error:'Use the '+(u.role==='admin'?'Administrator':u.role==='staff'?'Staff':'Student')+' login for this account.'},403);
   if(!u.password.startsWith('pbkdf2$'))await env.DB.prepare('UPDATE users SET password=? WHERE id=?').bind(await hash(body.password),u.id).run();
   if(token)await env.DB.prepare('DELETE FROM sessions WHERE token=?').bind(token).run();
   const value=hex(crypto.getRandomValues(new Uint8Array(32)));
@@ -60,14 +72,43 @@ async function handle(request,env){
   return json({message:'Logged out'},200,{'Set-Cookie':cookie('',0)});
  }
  if(!login)return json({error:'Not logged in'},401);
- if(route==='/api/me'&&method==='GET')return json({id:login.id,username:login.username,role:login.role});
- if(route==='/api/topics'&&method==='GET')return json((await env.DB.prepare("SELECT COALESCE(paper,'Other') paper,COALESCE(topic,'General') topic,COUNT(*) count FROM questions GROUP BY paper,topic ORDER BY paper,MIN(id)").all()).results);
+ if(route==='/api/me'&&method==='GET')return json({...staffView(login),role:login.role});
+ if(route.startsWith('/api/admin/')){
+  if(login.role!=='admin')return json({error:'Administrator access required'},403);
+  if(route==='/api/admin/staff'&&method==='GET')return json((await env.DB.prepare("SELECT * FROM users WHERE role='staff' ORDER BY id").all()).results.map(staffView));
+  if(route==='/api/admin/staff'&&method==='POST'){
+   if(!staffFields(body)||typeof body.username!=='string'||!body.username.trim()||body.username.length>80||typeof body.password!=='string'||body.password.length<10||body.password.length>256)return json({error:'Enter staff name, username, subject, paper and a password of at least 10 characters.'},400);
+   try{await env.DB.prepare("INSERT INTO users(username,password,role,display_name,subject_title,assigned_paper,can_upload,is_active) VALUES (?,?,'staff',?,?,?,?,?)").bind(body.username.trim(),await hash(body.password),body.name.trim(),body.subjectTitle.trim(),body.paper.trim(),body.canUpload?1:0,body.active?1:0).run()}catch(e){if(String(e).includes('UNIQUE'))return json({error:'Username already exists'},400);throw e}
+   return json({message:'Staff account created. Share its username and password privately.'},201);
+  }
+  if(/^\/api\/admin\/staff\/\d+$/.test(route)&&method==='POST'){
+   const id=Number(route.split('/').pop());
+   if(!staffFields(body))return json({error:'Enter staff name, subject and paper.'},400);
+   const staff=await env.DB.prepare("SELECT id FROM users WHERE id=? AND role='staff'").bind(id).first();
+   if(!staff)return json({error:'Staff account not found'},404);
+   await env.DB.prepare("UPDATE users SET display_name=?,subject_title=?,assigned_paper=?,can_upload=?,is_active=? WHERE id=? AND role='staff'").bind(body.name.trim(),body.subjectTitle.trim(),body.paper.trim(),body.canUpload?1:0,body.active?1:0,id).run();
+   return json({message:'Staff details and permissions updated.'});
+  }
+  return json({error:'Not found'},404);
+ }
+ if(route==='/api/topics'&&method==='GET'){
+  if(login.role==='staff'&&login.subject_title){
+   const row=await env.DB.prepare('SELECT COUNT(*) count FROM questions WHERE paper=? AND topic=?').bind(login.assigned_paper,login.subject_title).first();
+   return json([{paper:login.assigned_paper,topic:login.subject_title,count:row.count}]);
+  }
+  const topics=(await env.DB.prepare("SELECT COALESCE(paper,'Other') paper,COALESCE(topic,'General') topic,COUNT(*) count FROM questions GROUP BY paper,topic ORDER BY paper,MIN(id)").all()).results;
+  return json(topics);
+ }
  if(route.startsWith('/api/questions')){
-  if(login.role!=='staff')return json({error:'Unauthorized'},403);
-  if(route==='/api/questions/all'&&method==='GET')return json((await env.DB.prepare('SELECT * FROM questions ORDER BY id DESC').all()).results);
+  if(!['staff','admin'].includes(login.role))return json({error:'Unauthorized'},403);
+  if(route==='/api/questions/all'&&method==='GET'){
+   const statement=login.role==='staff'&&login.subject_title?env.DB.prepare('SELECT * FROM questions WHERE paper=? AND topic=? ORDER BY id DESC').bind(login.assigned_paper,login.subject_title):env.DB.prepare('SELECT * FROM questions ORDER BY id DESC');return json((await statement.all()).results);
+  }
   if(method==='POST'&&(route==='/api/questions'||route==='/api/questions/bulk')){
+   if(login.role==='staff'&&!login.can_upload)return json({error:'Your administrator has disabled question uploads.'},403);
    const qs=route.endsWith('/bulk')?body.questions:[body];
    if(!Array.isArray(qs)||qs.length<1||qs.length>500||!qs.every(validQuestion))return json({error:'Provide complete questions with correct answer A, B, C, or D'},400);
+   if(login.role==='staff'&&login.subject_title&&qs.some(q=>(q.paper||body.paper||'Other')!==login.assigned_paper||(q.topic||body.topic||'General')!==login.subject_title))return json({error:'You can only upload to your assigned paper and subject.'},403);
    for(let i=0;i<qs.length;i+=40)await env.DB.batch(qs.slice(i,i+40).map(q=>env.DB.prepare('INSERT INTO questions(question,option_a,option_b,option_c,option_d,correct_option,paper,topic) VALUES (?,?,?,?,?,?,?,?)').bind(q.question,q.option_a,q.option_b,q.option_c,q.option_d,q.correct_option.toUpperCase(),q.paper||body.paper||'Other',q.topic||body.topic||'General')));
    return json({message:`${qs.length} question(s) added!`});
   }

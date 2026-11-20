@@ -21,9 +21,14 @@ async function checkAuth(expectedRole) {
     const res = await fetch('/api/me');
     if (!res.ok) return window.location.href = '/';
     const user = await res.json();
-    if (user.role !== expectedRole) return window.location.href = '/';
+    if (user.role !== expectedRole && !(expectedRole === 'staff' && user.role === 'admin')) return window.location.href = '/';
     const welcome = document.getElementById('welcomeText');
-    if (welcome) welcome.innerText = `Welcome, ${user.username}`;
+    if (welcome) welcome.innerText = `Welcome, ${user.name || user.username}`;
+    if(expectedRole==='staff'){
+      const info=document.getElementById('staffAccess');
+      if(info)info.textContent=user.role==='admin'?'Administrator: full question bank access':`${user.name} · ${user.subjectTitle ? user.paper+' — '+user.subjectTitle : 'All existing topics'} · ${user.canUpload?'Question uploads enabled':'Question uploads disabled by administrator'}`;
+      if(user.role==='staff'&&!user.canUpload)document.querySelectorAll('[onclick="addQuestion()"],[onclick="bulkUpload()"]').forEach(b=>b.disabled=true);
+    }
 }
 
 async function logout() {
@@ -48,6 +53,7 @@ async function addQuestion() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     });
+    if (!res.ok) return alert((await res.json()).error || 'Unable to add question');
     if (res.ok) {
         alert('Question added!');
         document.querySelectorAll('input').forEach(i => i.value = '');

@@ -1,1 +1,20 @@
-{"version":"7","dialect":"sqlite","entries":[{"idx":0,"version":"6","when":1795178300000,"tag":"0000_portal","breakpoints":true}]}
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1795178300000,
+      "tag": "0000_portal",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1795178717449,
+      "tag": "0001_staff_administration",
+      "breakpoints": true
+    }
+  ]
+}
