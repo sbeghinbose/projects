@@ -1,4 +1,5 @@
 ï»¿import bcrypt from 'bcryptjs';
+import {reportRequest} from './reports.js';
 import bank from '../questions.json';
 import assets from '../assets.json';
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store',...headers}});
@@ -31,7 +32,7 @@ async function initializeAdmin(env){
  if(admin?.role!=='admin')throw new Error('Administrator username is already in use');
  await env.DB.prepare("INSERT OR IGNORE INTO metadata(key,value) VALUES ('admin-initialized-v1','done')").run();
 }
-const staffView=u=>({id:u.id,username:u.username,name:u.display_name||u.username,subjectTitle:u.subject_title||'',paper:u.assigned_paper||'',canUpload:!!u.can_upload,active:!!u.is_active});
+const staffView=u=>({id:u.id,username:u.username,name:u.display_name||u.username,subjectTitle:u.subject_title||'',paper:u.assigned_paper||'',canUpload:!!u.can_upload,canReport:!!u.can_report,active:!!u.is_active});
 const staffFields=b=>typeof b.name==='string'&&b.name.trim()&&b.name.length<=120&&typeof b.subjectTitle==='string'&&b.subjectTitle.trim()&&b.subjectTitle.length<=160&&typeof b.paper==='string'&&b.paper.trim()&&b.paper.length<=80&&typeof b.canUpload==='boolean'&&typeof b.active==='boolean';
 const cookie=(token,age=28800)=>`mcq_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
 const result=row=>({id:row.id,score:row.score,total:row.total,topic:row.topic,marks:row.score*2,totalMarks:row.total*2,review:row.review_json?JSON.parse(row.review_json):null});
@@ -47,13 +48,14 @@ async function handle(request,env){
  await initializeAdmin(env);
  const rawToken=request.headers.get('Cookie')?.match(/(?:^|;\s*)mcq_session=([a-f0-9]{64})(?:;|$)/)?.[1];
  const token=rawToken?await digest(rawToken):null;
- const login=token?await env.DB.prepare('SELECT sessions.token,sessions.quiz_json,users.id,users.username,users.role,users.display_name,users.subject_title,users.assigned_paper,users.can_upload,users.is_active FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=? AND sessions.expires>? AND users.is_active=1').bind(token,Date.now()).first():null;
+ const login=token?await env.DB.prepare('SELECT sessions.token,sessions.quiz_json,users.id,users.username,users.role,users.display_name,users.subject_title,users.assigned_paper,users.can_upload,users.can_report,users.is_active FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=? AND sessions.expires>? AND users.is_active=1').bind(token,Date.now()).first():null;
  let body={};
  if(method==='POST'){try{body=await request.json();if(!body||typeof body!=='object'||Array.isArray(body))throw Error()}catch{return json({error:'Invalid request'},400)}}
  if(route==='/api/register'&&method==='POST'){
   if(body.role!==undefined&&body.role!=='student')return json({error:'Only student registration is available.'},403);
   if(typeof body.username!=='string'||!body.username.trim()||body.username.length>80||typeof body.password!=='string'||!body.password||body.password.length>256)return json({error:'Enter a username and password'},400);
-  try{await env.DB.prepare("INSERT INTO users(username,password,role) VALUES (?,?,'student')").bind(body.username.trim(),await hash(body.password)).run()}catch(e){if(String(e).includes('UNIQUE'))return json({error:'Username already exists'},400);throw e}
+  if(['fullName','email','studentNumber','className'].some(k=>body[k]!==undefined&&(typeof body[k]!=='string'||body[k].length>160)))return json({error:'Registration details must be text, up to 160 characters per field.'},400);
+  try{await env.DB.prepare("INSERT INTO users(username,password,role,display_name,email,student_number,class_name,created_at) VALUES (?,?,'student',?,?,?,?,CURRENT_TIMESTAMP)").bind(body.username.trim(),await hash(body.password),typeof body.fullName==='string'?body.fullName.trim():body.username.trim(),body.email||null,body.studentNumber||null,body.className||null).run()}catch(e){if(String(e).includes('UNIQUE'))return json({error:'Username already exists'},400);throw e}
   return json({message:'Registration successful! Please login.'});
  }
  if(route==='/api/login'&&method==='POST'){
@@ -73,20 +75,39 @@ async function handle(request,env){
  }
  if(!login)return json({error:'Not logged in'},401);
  if(route==='/api/me'&&method==='GET')return json({...staffView(login),role:login.role});
+ if(route==='/api/account/password'&&method==='POST'){
+  if(typeof body.currentPassword!=='string'||typeof body.password!=='string'||body.password.length<10||body.password.length>256)return json({error:'Enter your current password and a new password of at least 10 characters.'},400);
+  const account=await env.DB.prepare('SELECT password FROM users WHERE id=?').bind(login.id).first();
+  if(!await verify(body.currentPassword,account.password))return json({error:'Current password is incorrect'},403);
+  await env.DB.batch([env.DB.prepare('UPDATE users SET password=? WHERE id=?').bind(await hash(body.password),login.id),env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(login.id),env.DB.prepare('INSERT INTO password_reset_audit(actor_id,target_id) VALUES (?,?)').bind(login.id,login.id)]);
+  return json({message:'Password changed. Please sign in again.'},200,{'Set-Cookie':cookie('',0)});
+ }
+ if(route.startsWith('/api/reports/'))return reportRequest(request,env,login);
  if(route.startsWith('/api/admin/')){
   if(login.role!=='admin')return json({error:'Administrator access required'},403);
+  if(route==='/api/admin/users'&&method==='GET'){
+   const role=url.searchParams.get('role')||'all';if(!['all','student','staff'].includes(role))return json({error:'Invalid account type'},400);
+   const query=role==='all'?env.DB.prepare("SELECT id,username,display_name,role,email,student_number,class_name,created_at,subject_title,assigned_paper,is_active,can_upload,can_report FROM users WHERE role IN ('student','staff') ORDER BY role,id LIMIT 5001"):env.DB.prepare('SELECT id,username,display_name,role,email,student_number,class_name,created_at,subject_title,assigned_paper,is_active,can_upload,can_report FROM users WHERE role=? ORDER BY id LIMIT 5001').bind(role);
+   const rows=(await query.all()).results;if(rows.length>5000)return json({error:'Too many accounts. Filter by account type.'},413);return json(rows);
+  }
+  if(/^\/api\/admin\/users\/\d+\/password$/.test(route)&&method==='POST'){
+   const id=Number(route.split('/')[4]);if(typeof body.password!=='string'||body.password.length<10||body.password.length>256)return json({error:'New password must contain 10–256 characters.'},400);
+   const target=await env.DB.prepare("SELECT id FROM users WHERE id=? AND role IN ('student','staff')").bind(id).first();if(!target)return json({error:'Student or staff account not found'},404);
+   await env.DB.batch([env.DB.prepare('UPDATE users SET password=? WHERE id=?').bind(await hash(body.password),id),env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(id),env.DB.prepare('INSERT INTO password_reset_audit(actor_id,target_id) VALUES (?,?)').bind(login.id,id)]);
+   return json({message:'New password assigned. All previous sessions have been signed out. Share the new password privately.'});
+  }
   if(route==='/api/admin/staff'&&method==='GET')return json((await env.DB.prepare("SELECT * FROM users WHERE role='staff' ORDER BY id").all()).results.map(staffView));
   if(route==='/api/admin/staff'&&method==='POST'){
    if(!staffFields(body)||typeof body.username!=='string'||!body.username.trim()||body.username.length>80||typeof body.password!=='string'||body.password.length<10||body.password.length>256)return json({error:'Enter staff name, username, subject, paper and a password of at least 10 characters.'},400);
-   try{await env.DB.prepare("INSERT INTO users(username,password,role,display_name,subject_title,assigned_paper,can_upload,is_active) VALUES (?,?,'staff',?,?,?,?,?)").bind(body.username.trim(),await hash(body.password),body.name.trim(),body.subjectTitle.trim(),body.paper.trim(),body.canUpload?1:0,body.active?1:0).run()}catch(e){if(String(e).includes('UNIQUE'))return json({error:'Username already exists'},400);throw e}
+   try{await env.DB.prepare("INSERT INTO users(username,password,role,display_name,subject_title,assigned_paper,can_upload,is_active,can_report,created_at) VALUES (?,?,'staff',?,?,?,?,?,?,CURRENT_TIMESTAMP)").bind(body.username.trim(),await hash(body.password),body.name.trim(),body.subjectTitle.trim(),body.paper.trim(),body.canUpload?1:0,body.active?1:0,body.canReport===false?0:1).run()}catch(e){if(String(e).includes('UNIQUE'))return json({error:'Username already exists'},400);throw e}
    return json({message:'Staff account created. Share its username and password privately.'},201);
   }
   if(/^\/api\/admin\/staff\/\d+$/.test(route)&&method==='POST'){
    const id=Number(route.split('/').pop());
    if(!staffFields(body))return json({error:'Enter staff name, subject and paper.'},400);
-   const staff=await env.DB.prepare("SELECT id FROM users WHERE id=? AND role='staff'").bind(id).first();
+   const staff=await env.DB.prepare("SELECT id,can_report FROM users WHERE id=? AND role='staff'").bind(id).first();
    if(!staff)return json({error:'Staff account not found'},404);
-   await env.DB.prepare("UPDATE users SET display_name=?,subject_title=?,assigned_paper=?,can_upload=?,is_active=? WHERE id=? AND role='staff'").bind(body.name.trim(),body.subjectTitle.trim(),body.paper.trim(),body.canUpload?1:0,body.active?1:0,id).run();
+   await env.DB.prepare("UPDATE users SET display_name=?,subject_title=?,assigned_paper=?,can_upload=?,is_active=?,can_report=? WHERE id=? AND role='staff'").bind(body.name.trim(),body.subjectTitle.trim(),body.paper.trim(),body.canUpload?1:0,body.active?1:0,typeof body.canReport==='boolean'?(body.canReport?1:0):staff.can_report,id).run();
    return json({message:'Staff details and permissions updated.'});
   }
   return json({error:'Not found'},404);

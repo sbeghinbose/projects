@@ -12,7 +12,7 @@
         button { background: #16a34a; color: white; border: none; font-weight: bold; cursor: pointer; }
         button.logout { background: #dc2626; width: auto; padding: 8px 16px; }
         .q-item { border-bottom: 1px solid #eee; padding: 10px 0; }
-    select {width:100%;padding:12px;margin:8px 0 16px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;background:white;} label{font-weight:600;} .q-item{line-height:1.7;} </style>
+    select {width:100%;padding:12px;margin:8px 0 16px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;background:white;} label{font-weight:600;} .q-item{line-height:1.7;} .report-actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}.report-actions button{width:auto}.report-scroll{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.9rem}td,th{border:1px solid #dbe3ed;text-align:left;padding:9px;white-space:nowrap}.analysis-grid{display:flex;gap:16px;flex-wrap:wrap}.analysis-grid p{background:#eff6ff;padding:12px;border-radius:8px} [hidden]{display:none!important} </style>
 </head>
 <body>
     <div class="header">
@@ -20,7 +20,7 @@
         <button class="logout" onclick="logout()">Logout</button>
     </div>
 
-<div class="card"><h2>IGCSE O Level Computer Science</h2><p>500 MCQs · 10 topics · 50 questions per topic</p><label for="paperSelect">Main heading / Paper</label><select id="paperSelect" onchange="updateTopics()"></select><label for="topicSelect">Topic heading</label><select id="topicSelect" onchange="topicChanged()"></select><p id="topicSummary"></p></div>
+<p id="staffAccess" role="status"></p><div class="card"><h2>IGCSE O Level Computer Science</h2><p>500 MCQs · 10 topics · 50 questions per topic</p><label for="paperSelect">Main heading / Paper</label><select id="paperSelect" onchange="updateTopics()"></select><label for="topicSelect">Topic heading</label><select id="topicSelect" onchange="topicChanged()"></select><p id="topicSummary"></p></div>
     <div class="card">
         <h3>Add Single MCQ</h3>
         <input type="text" id="question" placeholder="Enter question">
@@ -48,7 +48,8 @@
         <div id="questionList"></div>
     </div>
 
-    <script src="app.js"></script>
+<section class="card" id="examReports"><h2>Daily exam marks and analysis</h2><p class="hint">Select the day students submitted their exam. Repeat attempts are listed separately. Reports use 2 marks per correct answer.</p><form id="examReportForm"><div class="report-filters"><label>Exam date<input type="date" id="examDate" required></label><label>Timezone<input id="examTimezone" value="Asia/Kolkata" list="timezones" required></label><label>Paper / subject<select id="examSubject"><option value="">All permitted subjects</option></select></label><label>Pass benchmark (%)<input type="number" id="examBenchmark" value="50" min="0" max="100" step="1" required></label></div><div class="report-actions"><button type="submit">View marks and analysis</button><button type="button" data-exam-format="pdf">Download PDF</button><button type="button" data-exam-format="docx" data-admin-only>Download Word (.docx)</button><button type="button" data-exam-format="xlsx" data-admin-only>Download Excel (.xlsx)</button></div></form><p id="examStatus" role="status"></p><div id="examAnalysis"></div><div id="examPreview" class="report-scroll"></div><datalist id="timezones"><option value="Asia/Kolkata"><option value="UTC"><option value="Europe/London"><option value="America/New_York"><option value="Australia/Sydney"></datalist></section>
+    <script src="app.js"></script><script src="report-ui.js"></script>
     <script>
         checkAuth('staff');
         loadTopics();
