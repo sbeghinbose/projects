@@ -22,6 +22,13 @@
       "when": 1795179880667,
       "tag": "0002_reports_passwords",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795187561704,
+      "tag": "0003_learning_platform",
+      "breakpoints": true
     }
   ]
 }

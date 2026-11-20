@@ -15,3 +15,20 @@ Staff with report permission can select an exam date, timezone, subject, and pas
 Exam dates use submission timestamps converted from the selected local day to UTC boundaries. Repeat attempts count separately; unique students are shown separately. Old registration dates that were never recorded display as Not recorded. New student registration supports full name, email, student/admission number, and class/section.
 
 Exports are generated on the server using pdf-lib, an embedded Noto Sans font, and OOXML ZIP packages. Noto Sans licensing is in fonts/LICENSE.txt.
+
+## Learning and teaching features
+
+The public Cloudflare address serves the same app with a student learning centre and teaching workspace. New additive schema migrations preserve existing records.
+
+- Scheduled, timed, class-targeted exams with server-enforced deadlines and one attempt per student.
+- Practice with immediate feedback, authored explanations, and retry of previously wrong questions.
+- Topic coverage, latest-question accuracy, average marks and best marks; withheld exam results are excluded.
+- Teacher-owned class groups and targeted announcements.
+- Word/Excel imports with templates, client-side preview and validation (DOCX/XLSX, not scanned images).
+- Question editing, difficulty ratings and reversible archiving. Existing attempts use immutable snapshots.
+- Server draft saves and per-attempt local recovery. Offline answers sync only before the exam deadline; expired attempts use answers already saved on the server.
+- Automatic submission on expiry when the student resumes, submits, or the teacher loads attendance. The online timer also submits at expiry.
+- Manual teacher release or immediate release of marks and answer reviews.
+- Attendance, submitted/missed status, marks and PDF/Word/Excel attendance exports for permitted teachers.
+
+Original questions remain Unrated with blank authored explanations until staff supply them. Balanced selection uses the available rated levels and fills remaining places from the topic. Practice is excluded from daily exam reports.
