@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Staff Dashboard</title>
     <style>
         body { font-family: system-ui, sans-serif; background: #f4f6f9; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
@@ -11,7 +12,7 @@
         button { background: #16a34a; color: white; border: none; font-weight: bold; cursor: pointer; }
         button.logout { background: #dc2626; width: auto; padding: 8px 16px; }
         .q-item { border-bottom: 1px solid #eee; padding: 10px 0; }
-    </style>
+    select {width:100%;padding:12px;margin:8px 0 16px;border:1px solid #cbd5e1;border-radius:8px;font:inherit;background:white;} label{font-weight:600;} .q-item{line-height:1.7;} </style>
 </head>
 <body>
     <div class="header">
@@ -19,6 +20,7 @@
         <button class="logout" onclick="logout()">Logout</button>
     </div>
 
+<div class="card"><h2>IGCSE O Level Computer Science</h2><p>500 MCQs · 10 topics · 50 questions per topic</p><label for="paperSelect">Main heading / Paper</label><select id="paperSelect" onchange="updateTopics()"></select><label for="topicSelect">Topic heading</label><select id="topicSelect" onchange="topicChanged()"></select><p id="topicSummary"></p></div>
     <div class="card">
         <h3>Add Single MCQ</h3>
         <input type="text" id="question" placeholder="Enter question">
@@ -49,7 +51,7 @@
     <script src="app.js"></script>
     <script>
         checkAuth('staff');
-        loadAllQuestions();
+        loadTopics();
     </script>
 </body>
 </html>

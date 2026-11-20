@@ -1,0 +1,20 @@
+# Paid web service and persistent disk. Review charges in Render before deploying.
+services:
+  - type: web
+    name: mcq-exam-portal
+    runtime: node
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DB_PATH
+        value: /var/data/database.db
+    disk:
+      name: mcq-data
+      mountPath: /var/data
+      sizeGB: 1

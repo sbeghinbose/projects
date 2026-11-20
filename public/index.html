@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MCQ Portal - Login</title>
     <style>
         body { font-family: system-ui, sans-serif; background: #f4f6f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
@@ -18,12 +19,9 @@
         <h2 id="form-title">Portal Login</h2>
         <input type="text" id="username" placeholder="Username" required>
         <input type="password" id="password" placeholder="Password" required>
-        <select id="role" style="display:none;">
-            <option value="student">Student</option>
-            <option value="staff">Staff</option>
-        </select>
+
         <button onclick="handleAuth()" id="submit-btn">Login</button>
-        <div class="toggle" onclick="toggleMode()" id="toggle-text">Need an account? Register here</div>
+        <div class="toggle" onclick="toggleMode()" id="toggle-text">Students: Register here</div>
         <p id="msg" style="color: red; text-align: center; font-size: 0.9rem;"></p>
     </div>
 
@@ -31,17 +29,16 @@
         let isRegister = false;
         function toggleMode() {
             isRegister = !isRegister;
-            document.getElementById('form-title').innerText = isRegister ? 'Register Account' : 'Portal Login';
-            document.getElementById('role').style.display = isRegister ? 'block' : 'none';
+            document.getElementById('form-title').innerText = isRegister ? 'Register Student Account' : 'Portal Login';
             document.getElementById('submit-btn').innerText = isRegister ? 'Register' : 'Login';
-            document.getElementById('toggle-text').innerText = isRegister ? 'Already have an account? Login' : 'Need an account? Register here';
+            document.getElementById('toggle-text').innerText = isRegister ? 'Already have an account? Login' : 'Students: Register here';
             document.getElementById('msg').innerText = '';
         }
 
         async function handleAuth() {
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            const role = document.getElementById('role').value;
+            const role = 'student';
             const endpoint = isRegister ? '/api/register' : '/api/login';
 
             const res = await fetch(endpoint, {
