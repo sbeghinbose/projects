@@ -1,0 +1,8 @@
+{
+  "name": "beghin-mcq",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-20",
+  "workers_dev": true,
+  "preview_urls": false,
+  "account_id": "1691d296bfad8f863859bcabaa907512"
+}

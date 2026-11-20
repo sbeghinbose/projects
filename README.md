@@ -1,6 +1,8 @@
 # IGCSE Computer Science MCQ Portal
 
-Public website: https://beghin-igcse-mcq-portal.decent-leaf-1314.chatgpt.site/
+Public website: https://beghin-mcq.beghin.workers.dev/
+
+The Cloudflare public host forwards to the existing Sites backend, preserving the same database and accounts. Keep the Sites backend published.
 
 Open this HTTPS link on computers and smartphones. GitHub stores the source; the public app runs on Sites with Cloudflare D1 persistence. Your computer can be switched off.
 
@@ -18,3 +20,5 @@ The root contains the original Express/SQLite app. Run `npm ci` and `npm start` 
 User accounts, password hashes, quiz results, sessions, and bootstrap secrets are not stored in this repository. The existing accounts were transferred through a secret hosting environment value.
 
 The Render configuration is an optional paid alternative, not the current hosting service.
+
+`public-host/` contains the Cloudflare Workers Free public address configuration. Deploy with Wrangler after signing in to the owner account.
