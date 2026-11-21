@@ -30,3 +30,5 @@ Classroom tools add class performance analysis, exam readiness checks, staff-ass
 The public front page uses the owner-provided Coding Lab flyer, its complete campaign text, a responsive navy/gold/turquoise layout, and student/staff login panels. The original flyer is embedded directly, without external image dependencies.
 
 Four owner-supplied Word documents added 4,000 questions with their answer keys. Topic aliases map the source headings to the existing ten subjects; source filenames and question numbers form unique import keys. See `hosted/imported-bank-manifest.json` for per-file counts, source hashes and title mapping. The added questions have unrated difficulty and no authored explanations in the source documents.
+
+Student access is now locked after registration: announcements and original educational quotes are available, while questions open only through explicitly staff-approved exams. Staff select recipients, chapters, counts, time slots, and may revoke permission. Two extra minutes are included in the personal timer and final closing deadline. Independent practice and student learning-resource/notebook tools are disabled under this policy.

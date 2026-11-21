@@ -1,3 +1,4 @@
+import {studentBoundary,accessRequest} from './access.js';
 import {classroomRequest} from './classroom.js';
 import {mfaRequest,verifyMfa} from './mfa.js';
 import {initializeResources} from './starter-resources.js';
@@ -155,6 +156,8 @@ async function handle(request,env){
 
  }
 
+ const boundary=await studentBoundary(request,env,login,body);if(boundary)return boundary;
+ const access=await accessRequest(request,env,login,body);if(access)return access;
  const mfa=await mfaRequest(request,env,login,body,verify);if(mfa)return mfa;
  const classroom=await classroomRequest(request,env,login,body);if(classroom)return classroom;
  const support=await supportRequest(request,env,login,body,{hash,verify});if(support)return support;

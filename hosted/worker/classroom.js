@@ -1,3 +1,4 @@
+import {permittedExam} from './access.js';
 const json=(d,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 const read=async(db,s,...a)=>(await db.prepare(s).bind(...a).all()).results;
 const one=(db,s,...a)=>db.prepare(s).bind(...a).first();
@@ -16,11 +17,11 @@ export function duplicateWarnings(incoming,bank){
 export async function classroomRequest(request,env,u,b={}){
  const url=new URL(request.url),p=url.pathname,m=request.method,db=env.DB;if(!p.startsWith('/api/classroom/'))return null;if(!u)return json({error:'Not logged in'},401);
  if(p==='/api/classroom/ready'&&m==='POST'&&u.role==='student'){
-  const e=await one(db,'SELECT * FROM exams WHERE id=? AND cancelled=0',Number(b.examId));if(!e||(e.group_id&&!await one(db,'SELECT 1 yes FROM group_members WHERE group_id=? AND student_id=?',e.group_id,u.id)))return json({error:'Exam not assigned to you'},403);
+  const e=await permittedExam(db,u.id,Number(b.examId));if(!e)return json({error:'Exam not assigned to you'},403);
   const existing=await one(db,'SELECT id,status,deadline FROM learning_attempts WHERE exam_id=? AND student_id=?',e.id,u.id);if(e.access_code&&!existing&&String(b.accessCode||'').toUpperCase()!==e.access_code)return json({error:'Exam access code is incorrect.'},403);
   const sections=e.blueprint_json?JSON.parse(e.blueprint_json):[{paper:e.paper,topic:e.topic,count:e.question_count,difficulty:e.difficulty}],checks=[];
   for(const s of sections){const count=await one(db,"SELECT COUNT(*) count FROM questions WHERE archived=0 AND approval_state='approved' AND paper=? AND topic=? AND (? IN ('all','balanced') OR difficulty=?)",s.paper,s.topic,s.difficulty,s.difficulty);checks.push({topic:s.paper+' / '+s.topic,available:count.count,required:s.count,okay:count.count>=s.count})}
-  const time=Date.now(),start=Date.parse(e.starts_at.replace(' ','T')+'Z'),end=Date.parse(e.ends_at.replace(' ','T')+'Z');return json({serverTime:new Date().toISOString(),examTitle:e.title,opensAt:new Date(start).toISOString(),closesAt:new Date(end).toISOString(),canStart:time>=start&&time<end&&checks.every(c=>c.okay),checks,existing,notice:'This check does not start the timer. A successful connection check cannot guarantee that your connection will remain available.'});
+  const time=Date.now(),start=Date.parse(e.starts_at.replace(' ','T')+'Z'),end=Date.parse(e.ends_at.replace(' ','T')+'Z');return json({serverTime:new Date().toISOString(),examTitle:e.title,opensAt:new Date(start).toISOString(),closesAt:new Date(end).toISOString(),canStart:time>=start&&time<end&&checks.every(c=>c.okay),checks,existing,graceMinutes:e.grace_minutes||0,notice:'Two extra minutes are added to the exam timer and the closing deadline. This check does not start the timer. A successful connection check cannot guarantee that your connection will remain available.'});
  }
  if(p==='/api/classroom/notebook'){
   if(u.role!=='student')return json({error:'Student access required'},403);
@@ -35,6 +36,7 @@ export async function classroomRequest(request,env,u,b={}){
   }
  }
  if(p==='/api/classroom/assignments'){
+  if(m==='POST')return json({error:'Assign students to a scheduled exam in the teaching workspace. Unrestricted practice assignments are disabled.'},403);
   if(m==='GET'){
    let list=teacher(u)?await read(db,'SELECT a.*,g.name group_name FROM revision_assignments a JOIN class_groups g ON g.id=a.group_id ORDER BY a.id DESC LIMIT 1000'):await read(db,'SELECT a.*,g.name group_name,x.id attempt_id,x.status attempt_status,x.submitted_at FROM revision_assignments a JOIN class_groups g ON g.id=a.group_id JOIN group_members m ON m.group_id=g.id LEFT JOIN learning_attempts x ON x.assignment_id=a.id AND x.student_id=? WHERE m.student_id=? AND a.archived=0 ORDER BY a.due_at,a.id',u.id,u.id);return json(teacher(u)?list.filter(a=>own(u,a)):list);
   }

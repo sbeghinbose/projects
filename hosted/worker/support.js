@@ -14,7 +14,7 @@ export async function revisionItems(db,id){
  const bank=await rows(db,'SELECT * FROM questions WHERE '+activeQuestion),now=Date.now();
  return bank.flatMap(q=>{const r=latest.get('id:'+q.id)||latest.get('text:'+q.question);if(!r)return [];const days=r.correct?7:2,due=Date.parse(r.at.replace(' ','T')+'Z')+days*86400000;return [{id:q.id,paper:q.paper,topic:q.topic,correct:!!r.correct,dueAt:new Date(due).toISOString(),due:due<=now}]});
 }
-const tables=['users','questions','scores','metadata','class_groups','group_members','exams','learning_attempts','announcements','password_reset_audit','question_submissions','question_flags','resources','accommodations','recovery_requests','revision_assignments','mistake_notebook','question_versions'];
+const tables=['users','questions','scores','metadata','class_groups','group_members','exams','learning_attempts','announcements','password_reset_audit','question_submissions','question_flags','resources','accommodations','recovery_requests','revision_assignments','mistake_notebook','question_versions','exam_students'];
 export async function supportRequest(request,env,u,body,{hash,verify}={}){
  const url=new URL(request.url),p=url.pathname,m=request.method,db=env.DB;
  // Recovery requests never reveal whether a username exists. No password is changed here.

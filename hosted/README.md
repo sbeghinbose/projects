@@ -21,8 +21,8 @@ Exports are generated on the server using pdf-lib, an embedded Noto Sans font, a
 The public Cloudflare address serves the same app with a student learning centre and teaching workspace. New additive schema migrations preserve existing records.
 
 - Scheduled, timed, class-targeted exams with server-enforced deadlines and one attempt per student.
-- Practice with immediate feedback, authored explanations, and retry of previously wrong questions.
-- Topic coverage, latest-question accuracy, average marks and best marks; withheld exam results are excluded.
+- Student self-directed practice, resources, revision plans and notebooks are locked under the staff-controlled access policy.
+- Staff retain class/topic analysis; students see their own marks and permitted released exam reviews.
 - Teacher-owned class groups and targeted announcements.
 - Word/Excel imports with templates, client-side preview and validation (DOCX/XLSX, not scanned images).
 - Question editing, difficulty ratings and reversible archiving. Existing attempts use immutable snapshots.
@@ -64,3 +64,15 @@ Reference: https://www.rfc-editor.org/rfc/rfc6238
 ## Expanded question bank
 
 Migration 0007 adds 4,000 owner-supplied questions from four DOCX files. Every source contains 1,000 numbered questions with matching answer-key option text. Source document/number keys make the import repeat-safe. Existing questions, accounts, assignments, attempts and results are preserved. Topic headings map to the existing ten subjects, as documented in imported-bank-manifest.json. The live bank now contains 4,500 questions: 2,300 in Paper 1 and 2,200 in Paper 2. The imported records are approved and available for practice/exams, with unrated difficulty and blank explanations because those fields were not supplied.
+
+## Staff-controlled exam permissions
+
+Registration does not grant access to questions. Every student API request passes a server-side access boundary before learning, classroom or support routes. Students can read announcements, view original educational quotes and access only individually assigned exams and their own result summaries. Unapproved practice attempts, question banks, topic browsing, revision resources and notebooks are blocked even through direct API URLs. Historical answer reviews require a current permission for the original exam.
+
+The teaching workspace requires an explicit non-empty selection of registered active students when scheduling an exam. A class selector can copy current members into this selection, but new registrations and later class membership changes never inherit permission. Different selected students can receive separate exams with different topics, question counts and time slots; multi-topic blueprints also require explicit recipients. The exam owner or an administrator can replace the selection or revoke everyone. Attendance uses the explicit recipient roster.
+
+Migration 0008 adds exam_students and a two-minute allowance. Existing explicitly assigned class rosters are copied once; old exams addressed to all registrations receive no automatic permissions. Accounts, questions, attempts and scores are retained. Permission tables are included in encrypted backups.
+
+Every exam receives two extra minutes: deadline = minimum(start + duration + individual accommodation + 2 minutes, closing time + 2 minutes). A new attempt must start within the original window. Late answers are still ignored; marking uses answers saved before the deadline. Result release remains controlled by the teacher.
+
+Student dashboards refresh permissions every 15 seconds while visible, and active exams check revocation on the same interval. Server denial is immediate on requests. Content already downloaded cannot be recalled from an offline device. Old student classroom/support pages redirect to the restricted dashboard. Legacy untimed revision assignment creation is retired in favour of selected-student timed exams.

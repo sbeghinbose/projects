@@ -57,6 +57,13 @@
       "when": 1795265045631,
       "tag": "0007_additional_4000_mcqs",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795266627768,
+      "tag": "0008_staff_exam_permissions",
+      "breakpoints": true
     }
   ]
 }
