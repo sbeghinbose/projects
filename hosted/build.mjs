@@ -5,4 +5,4 @@ const assets={};for(const name of readdirSync('public').filter(n=>/\.(html|js|cs
 mkdirSync('dist/server',{recursive:true});mkdirSync('dist/.openai',{recursive:true});
 await build({entryPoints:['worker/index.js'],bundle:true,platform:'browser',format:'esm',target:'es2022',outfile:'dist/server/index.js',external:['crypto'],loader:{'.ttf':'binary'},minify:false});
 copyFileSync('.openai/hosting.json','dist/.openai/hosting.json');
-console.log('Built Worker, embedded frontend, and 500 questions.');
+console.log('Built Worker and embedded frontend; schema migrations include the complete question bank.');

@@ -60,3 +60,7 @@ Public address: https://beghin-mcq.beghin.workers.dev/
 - Backups now include revision assignments, notebook entries and question versions. MFA setup and recovery secrets are excluded and preserved in place during restore; restore rejects backups that remove or rename an MFA-protected administrator. A backup from an older schema may require migration before restore.
 
 Reference: https://www.rfc-editor.org/rfc/rfc6238
+
+## Expanded question bank
+
+Migration 0007 adds 4,000 owner-supplied questions from four DOCX files. Every source contains 1,000 numbered questions with matching answer-key option text. Source document/number keys make the import repeat-safe. Existing questions, accounts, assignments, attempts and results are preserved. Topic headings map to the existing ten subjects, as documented in imported-bank-manifest.json. The live bank now contains 4,500 questions: 2,300 in Paper 1 and 2,200 in Paper 2. The imported records are approved and available for practice/exams, with unrated difficulty and blank explanations because those fields were not supplied.

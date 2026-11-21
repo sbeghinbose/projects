@@ -1,0 +1,90 @@
+{
+  "addedQuestions": 4000,
+  "documents": [
+    {
+      "file": "Computer_Science_Paper_1_1000_MCQ.docx",
+      "sha256": "3aad356b9c7f4298ca708c219f62aabbea2f167c2c41e3b82ad7501af94a2ab2",
+      "paper": "Paper 1",
+      "questions": 1000,
+      "answerKeys": 1000,
+      "range": [
+        1,
+        1000
+      ],
+      "topics": {
+        "Data Representation": 210,
+        "Data Transmission": 160,
+        "Hardware": 200,
+        "Software": 140,
+        "Internet and Its Uses": 160,
+        "Automated Systems and Emerging Technology": 130
+      }
+    },
+    {
+      "file": "Paper_1_Additional_1000_MCQs.docx",
+      "sha256": "a879ebdd62340952ff12bd75d35e264792182a551170314dd00e41252db27e74",
+      "paper": "Paper 1",
+      "questions": 1000,
+      "answerKeys": 1000,
+      "range": [
+        1001,
+        2000
+      ],
+      "topics": {
+        "Data Representation": 220,
+        "Data Transmission": 160,
+        "Hardware": 200,
+        "Software": 140,
+        "Internet and Its Uses": 150,
+        "Automated Systems and Emerging Technology": 130
+      }
+    },
+    {
+      "file": "Computer_Science_Paper_2_1000_MCQ.docx",
+      "sha256": "fbe8780591a1b3ea006487d2f113bcd3e7d8942f7f86919a4befa7e492f62e58",
+      "paper": "Paper 2",
+      "questions": 1000,
+      "answerKeys": 1000,
+      "range": [
+        1,
+        1000
+      ],
+      "topics": {
+        "Algorithm Design and Flowcharts": 300,
+        "Programming": 350,
+        "Databases": 200,
+        "Boolean Algebra and Logic Gates": 150
+      }
+    },
+    {
+      "file": "Paper_2_Additional_1000_MCQs.docx",
+      "sha256": "3ad9e211000fb0d980dfeb8b9bdea17d2374728dcedf80c4bf4a1e1c3f0a2e89",
+      "paper": "Paper 2",
+      "questions": 1000,
+      "answerKeys": 1000,
+      "range": [
+        1001,
+        2000
+      ],
+      "topics": {
+        "Algorithm Design and Flowcharts": 300,
+        "Programming": 350,
+        "Databases": 200,
+        "Boolean Algebra and Logic Gates": 150
+      }
+    }
+  ],
+  "topicMapping": {
+    "Data representation": "Data Representation",
+    "Data transmission": "Data Transmission",
+    "Hardware": "Hardware",
+    "Software": "Software",
+    "The internet and its uses": "Internet and Its Uses",
+    "Automated and emerging technologies": "Automated Systems and Emerging Technology",
+    "Algorithm design and problem-solving": "Algorithm Design and Flowcharts",
+    "Programming": "Programming",
+    "Databases": "Databases",
+    "Boolean logic": "Boolean Algebra and Logic Gates"
+  },
+  "notes": "Answer keys are transcribed from the supplied documents and matched against their option text. Explanations are absent in these source documents; imported questions retain blank explanations and unrated difficulty. Existing authored questions, accounts and results are preserved."
+}

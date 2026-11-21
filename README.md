@@ -6,7 +6,7 @@ The Cloudflare public host forwards to the existing Sites backend, preserving th
 
 Open this HTTPS link on computers and smartphones. GitHub stores the source; the public app runs on Sites with Cloudflare D1 persistence. Your computer can be switched off.
 
-- 500 questions: Paper 1 and Paper 2, 10 topics of 50 questions.
+- 4,500 questions across ten topics: 2,300 for Paper 1 and 2,200 for Paper 2. Practice can select 50 questions per attempt.
 - Student-only registration; existing staff accounts are migrated privately.
 - Two marks per correct answer, 100 total per 50-question quiz.
 - Dashboard history and red incorrect/unanswered answer reviews.
@@ -28,3 +28,5 @@ The deployed version now includes personal and spaced revision, exam codes and s
 Classroom tools add class performance analysis, exam readiness checks, staff-assigned revision, private mistake notebooks, question version history, duplicate checks, multi-topic exams, and optional administrator two-factor authentication.
 
 The public front page uses the owner-provided Coding Lab flyer, its complete campaign text, a responsive navy/gold/turquoise layout, and student/staff login panels. The original flyer is embedded directly, without external image dependencies.
+
+Four owner-supplied Word documents added 4,000 questions with their answer keys. Topic aliases map the source headings to the existing ten subjects; source filenames and question numbers form unique import keys. See `hosted/imported-bank-manifest.json` for per-file counts, source hashes and title mapping. The added questions have unrated difficulty and no authored explanations in the source documents.
