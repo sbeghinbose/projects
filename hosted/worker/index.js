@@ -1,3 +1,5 @@
+import {initializeResources} from './starter-resources.js';
+import {supportRequest} from './support.js';
 import bcrypt from 'bcryptjs';
 
 import {learningRequest} from './learning.js';
@@ -37,7 +39,7 @@ async function initialize(env){
 
  if(await env.DB.prepare("SELECT value FROM metadata WHERE key='initialized-v1'").first())return;
 
- for(let i=0;i<bank.length;i+=40) await env.DB.batch(bank.slice(i,i+40).map(q=>env.DB.prepare('INSERT OR IGNORE INTO questions(question,option_a,option_b,option_c,option_d,correct_option,paper,topic,source_number,source_key) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(q.question,q.option_a,q.option_b,q.option_c,q.option_d,q.correct_option,q.paper,q.topic,q.source_number,`${q.paper}:${q.source_number}`)));
+ for(let i=0;i<bank.length;i+=40) await env.DB.batch(bank.slice(i,i+40).map(q=>env.DB.prepare('INSERT OR IGNORE INTO questions(question,option_a,option_b,option_c,option_d,correct_option,paper,topic,source_number,source_key,explanation,diagram_data_uri,diagram_alt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(q.question,q.option_a,q.option_b,q.option_c,q.option_d,q.correct_option,q.paper,q.topic,q.source_number,`${q.paper}:${q.source_number}`,q.explanation,q.diagram_data_uri,q.diagram_alt)));
 
  const initial=env.INITIAL_DATA?JSON.parse(env.INITIAL_DATA):{users:[],scores:[],questions:[]};
 
@@ -89,11 +91,12 @@ async function handle(request,env){
 
  if(method==='POST'&&request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin)return json({error:'Invalid origin'},403);
 
- if(Number(request.headers.get('Content-Length')||0)>250000)return json({error:'Request too large'},413);
+ if(Number(request.headers.get('Content-Length')||0)>(route==='/api/support/restore'?10000000:250000))return json({error:'Request too large'},413);
 
  await initialize(env);
 
  await initializeAdmin(env);
+ await initializeResources(env.DB);
 
  const rawToken=request.headers.get('Cookie')?.match(/(?:^|;\s*)mcq_session=([a-f0-9]{64})(?:;|$)/)?.[1];
 
@@ -149,6 +152,7 @@ async function handle(request,env){
 
  }
 
+ const support=await supportRequest(request,env,login,body,{hash,verify});if(support)return support;
  if(!login)return json({error:'Not logged in'},401);
 
  if(route==='/api/me'&&method==='GET')return json({...staffView(login),role:login.role});
@@ -274,48 +278,7 @@ async function handle(request,env){
 
  if(login.role!=='student')return json({error:'Unauthorized'},403);
 
- if(route==='/api/quiz'&&method==='GET'){
-
-  const paper=url.searchParams.get('paper'),topic=url.searchParams.get('topic');
-
-  if(!paper||!topic)return json({error:'Select a paper and topic'},400);
-
-  const qs=(await env.DB.prepare('SELECT id,question,option_a,option_b,option_c,option_d FROM questions WHERE paper=? AND topic=? ORDER BY RANDOM() LIMIT 50').bind(paper,topic).all()).results;
-
-  await env.DB.prepare('UPDATE sessions SET quiz_json=? WHERE token=?').bind(JSON.stringify({ids:qs.map(q=>q.id),paper,topic}),token).run();return json(qs);
-
- }
-
- if(route==='/api/quiz/submit'&&method==='POST'){
-
-  const quiz=login.quiz_json?JSON.parse(login.quiz_json):null;
-
-  if(!quiz?.ids?.length)return json({error:'Start a quiz first'},400);
-
-  const answers=body.answers;if(!answers||typeof answers!=='object'||Array.isArray(answers))return json({error:'Invalid answers'},400);
-
-  const rows=(await env.DB.prepare(`SELECT * FROM questions WHERE id IN (${quiz.ids.map(()=>'?').join(',')})`).bind(...quiz.ids).all()).results;
-
-  const review=quiz.ids.map((id,index)=>{const q=rows.find(q=>q.id===id);const selected=['A','B','C','D'].includes(answers[id])?answers[id]:null;const correct=selected===q.correct_option;return {number:index+1,question:q.question,selectedOption:selected,selectedAnswer:selected?q['option_'+selected.toLowerCase()]:null,correctOption:q.correct_option,correctAnswer:q['option_'+q.correct_option.toLowerCase()],correct,marks:correct?2:0}});
-
-  const score=review.filter(q=>q.correct).length,total=review.length,topic=`${quiz.paper} — ${quiz.topic}`;
-
-  // Atomically consume the attempt; a simultaneous second submit inserts no row.
-
-  await env.DB.batch([
-
-   env.DB.prepare('INSERT INTO scores(student_id,score,total,topic,review_json) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM sessions WHERE token=? AND quiz_json=?)').bind(login.id,score,total,topic,JSON.stringify(review),token,login.quiz_json),
-
-   env.DB.prepare('UPDATE sessions SET quiz_json=NULL WHERE token=? AND quiz_json=?').bind(token,login.quiz_json)
-
-  ]);
-
-  const saved=await env.DB.prepare('SELECT id FROM scores WHERE student_id=? ORDER BY id DESC LIMIT 1').bind(login.id).first();
-
-  return json({id:saved.id,score,total,marks:score*2,totalMarks:total*2,topic,review});
-
- }
-
+ if(route==='/api/quiz'||route==='/api/quiz/submit')return json({error:'Use the student learning centre to start or resume an attempt.'},410);
  if(route==='/api/scores'&&method==='GET')return json((await env.DB.prepare('SELECT id,score,total,score*2 marks,total*2 totalMarks,attempted_at,topic,review_json IS NOT NULL hasReview FROM scores WHERE student_id=? ORDER BY id DESC').bind(login.id).all()).results);
 
  if(/^\/api\/scores\/\d+$/.test(route)&&method==='GET'){

@@ -1,6 +1,6 @@
 # Hosted Worker
 
-This version uses the same UI and features as the local Express app, backed by Cloudflare D1. Configure `DB` as the D1 binding and apply `drizzle/` schema migrations. Build with `npm ci` then `npm run build`.
+This is the deployed application, backed by Cloudflare D1; it has additional features beyond the original Express app. Configure `DB` as the D1 binding and apply `drizzle/` schema migrations. Build with `npm ci` then `npm run build`.
 
 `INITIAL_DATA` is an optional, secret, one-time migration JSON value containing existing users and scores. Never put its contents in source control. Startup imports records idempotently and marks the initial migration complete. All subsequent account and attempt data lives in D1.
 
@@ -31,4 +31,18 @@ The public Cloudflare address serves the same app with a student learning centre
 - Manual teacher release or immediate release of marks and answer reviews.
 - Attendance, submitted/missed status, marks and PDF/Word/Excel attendance exports for permitted teachers.
 
-Original questions remain Unrated with blank authored explanations until staff supply them. Balanced selection uses the available rated levels and fills remaining places from the topic. Practice is excluded from daily exam reports.
+All 500 original questions include answer explanations. Five original diagrams and three pseudocode blocks have been restored from the source Word document, with accessible text descriptions. Original question difficulties remain Unrated until staff assess them. Balanced selection uses the available rated levels and fills remaining places from the topic. Practice is excluded from daily exam reports.
+
+## Revision, support and safeguards
+
+- Personal revision priorities and spaced reviews: incorrect answers after two days, correct answers after seven days, based only on released results. Revision is shown after login; no email or push reminders are configured.
+- Exam codes checked on first start, shuffled option snapshots with remapped answer keys, and individually assigned extra minutes before starting. Extra time never exceeds the exam submission-window end.
+- Staff additions and edits require administrator approval. Approved edits replace the live question only after approval; immutable attempts retain their original content.
+- Student question reports and staff replies; question accuracy analysis for up to 5,000 recent scored attempts, including practice and unanswered responses.
+- Ten starter topic resources with worked examples, plus staff-created notes and HTTPS links.
+- Large text, high contrast, reduced motion, keyboard controls and a skip link. Preferences are saved on the device.
+- Administrator-reviewed recovery requests. School identity verification is required before a reset; no automatic email delivery is configured.
+- Administrator-only full data backup, with current-password verification. The browser encrypts downloads using AES-256-GCM with a PBKDF2-SHA256-derived key (250,000 iterations, random salt and IV). Backup passphrases are never sent to the server. Backups contain personal data and password hashes; keep them private. Sessions are excluded.
+- Restore accepts this schema's backups, validates fields, previews counts, requires typed confirmation and current admin password, then replaces data in one D1 transaction. All sessions are revoked; the current administrator password is retained. Browser restore is limited to 20,000 rows and a 10 MB request. No automatic backup schedule is configured.
+
+Public address: https://beghin-mcq.beghin.workers.dev/

@@ -22,3 +22,5 @@ User accounts, password hashes, quiz results, sessions, and bootstrap secrets ar
 The Render configuration is an optional paid alternative, not the current hosting service.
 
 `public-host/` contains the Cloudflare Workers Free public address configuration. Deploy with Wrangler after signing in to the owner account.
+
+The deployed version now includes personal and spaced revision, exam codes and shuffled options, staff question approval, question quality analysis, student question reports, topic resources, accessibility options, verified account recovery, and encrypted full data backup/restore. See `hosted/README.md` for behaviour and limits.

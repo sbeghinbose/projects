@@ -29,6 +29,20 @@
       "when": 1795187561704,
       "tag": "0003_learning_platform",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795218532424,
+      "tag": "0004_revision_support",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795219041689,
+      "tag": "0005_original_explanations",
+      "breakpoints": true
     }
   ]
 }

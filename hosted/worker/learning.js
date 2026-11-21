@@ -1,3 +1,4 @@
+import {shuffleOptions,revisionItems} from './support.js';
 import {exportReport,xlsx} from './reports.js';
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 const text=(v,max=160)=>typeof v==='string'&&v.trim().length>0&&v.length<=max;
@@ -10,7 +11,7 @@ const iso=s=>s?new Date(millis(s)).toISOString():null;
 const read=async(db,sql,...args)=>(await db.prepare(sql).bind(...args).all()).results;
 const one=(db,sql,...args)=>db.prepare(sql).bind(...args).first();
 const run=(db,sql,...args)=>db.prepare(sql).bind(...args).run();
-const publicQuestion=q=>({id:q.id,question:q.question,option_a:q.option_a,option_b:q.option_b,option_c:q.option_c,option_d:q.option_d,difficulty:q.difficulty||'unrated'});
+const publicQuestion=q=>({id:q.id,question:q.question,option_a:q.option_a,option_b:q.option_b,option_c:q.option_c,option_d:q.option_d,difficulty:q.difficulty||'unrated',diagram_data_uri:q.diagram_data_uri||null,diagram_alt:q.diagram_alt||null});
 const sanitize=(answers,questions)=>Object.fromEntries(questions.filter(q=>['A','B','C','D'].includes(answers?.[q.id])).map(q=>[q.id,answers[q.id]]));
 const permission=u=>u.role==='admin'||u.can_upload;
 function validateQuestion(q){return q&&['question','option_a','option_b','option_c','option_d','paper','topic'].every(k=>text(q[k],k==='question'?4000:1000))&&typeof q.correct_option==='string'&&/^[ABCD]$/i.test(q.correct_option)&&(!q.difficulty||['easy','medium','hard','unrated'].includes(q.difficulty))&&(!q.explanation||typeof q.explanation==='string'&&q.explanation.length<=5000)}
@@ -20,7 +21,7 @@ async function scoreAttempt(db,a,proposed){
  if(a.status==='submitted')return a;
  const questions=JSON.parse(a.snapshot_json),late=a.deadline&&Date.now()>=millis(a.deadline);
  const answers=sanitize(late?JSON.parse(a.answers_json):(proposed||JSON.parse(a.answers_json)),questions);
- const review=questions.map((q,i)=>{const selected=answers[q.id]||null,correct=selected===q.correct_option;return {number:i+1,questionId:q.id,question:q.question,selectedOption:selected,selectedAnswer:selected?q['option_'+selected.toLowerCase()]:null,correctOption:q.correct_option,correctAnswer:q['option_'+q.correct_option.toLowerCase()],explanation:q.explanation||'',difficulty:q.difficulty||'unrated',correct,marks:correct?2:0}});
+ const review=questions.map((q,i)=>{const selected=answers[q.id]||null,correct=selected===q.correct_option;return {number:i+1,questionId:q.id,question:q.question,diagram_data_uri:q.diagram_data_uri||null,diagram_alt:q.diagram_alt||null,selectedOption:selected,selectedAnswer:selected?q['option_'+selected.toLowerCase()]:null,correctOption:q.correct_option,correctAnswer:q['option_'+q.correct_option.toLowerCase()],explanation:q.explanation||'',difficulty:q.difficulty||'unrated',correct,marks:correct?2:0}});
  const score=review.filter(q=>q.correct).length;
  await db.batch([
   db.prepare("INSERT OR IGNORE INTO scores(student_id,score,total,topic,review_json,attempt_id,exam_id,mode) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM learning_attempts WHERE id=? AND status='active')").bind(a.student_id,score,questions.length,topicLabel(a.paper,a.topic),JSON.stringify(review),a.id,a.exam_id,a.mode,a.id),
@@ -42,7 +43,7 @@ async function attemptView(db,a,u){
 }
 async function finalizeExam(db,id){const attempts=await read(db,"SELECT * FROM learning_attempts WHERE exam_id=? AND status='active' AND deadline<=?",id,utc());for(const a of attempts)await scoreAttempt(db,a)}
 async function releasedScores(db,student){return read(db,"SELECT s.*,e.release_policy,e.results_released FROM scores s LEFT JOIN exams e ON e.id=s.exam_id WHERE s.student_id=? AND (s.exam_id IS NULL OR e.release_policy='immediate' OR e.results_released=1) ORDER BY s.id DESC LIMIT 1000",student)}
-async function wrongQuestions(db,student,paper,topic){const scores=await releasedScores(db,student),latest=new Map();for(const s of scores)for(const q of JSON.parse(s.review_json||'[]'))if(!latest.has(q.question))latest.set(q.question,q.correct);const wrong=[...latest].filter(([,correct])=>!correct).map(([q])=>q);if(!wrong.length)return [];const active=await read(db,'SELECT * FROM questions WHERE archived=0 AND paper=? AND topic=?',paper,topic);return active.filter(q=>wrong.includes(q.question))}
+async function wrongQuestions(db,student,paper,topic){const scores=await releasedScores(db,student),latest=new Map();for(const s of scores)for(const q of JSON.parse(s.review_json||'[]'))if(!latest.has(q.question))latest.set(q.question,q.correct);const wrong=[...latest].filter(([,correct])=>!correct).map(([q])=>q);if(!wrong.length)return [];const active=await read(db,'SELECT * FROM questions WHERE archived=0 AND approval_state=\'approved\' AND paper=? AND topic=?',paper,topic);return active.filter(q=>wrong.includes(q.question))}
 function chooseQuestions(pool,count,difficulty){
  const shuffled=[...pool];for(let i=shuffled.length-1;i>0;i--){const j=crypto.getRandomValues(new Uint32Array(1))[0]%(i+1);[shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]]}
  if(difficulty==='balanced'){const result=[];for(const level of ['easy','medium','hard'])result.push(...shuffled.filter(q=>q.difficulty===level).slice(0,Math.floor(count/3)));return [...result,...shuffled.filter(q=>!result.includes(q))].slice(0,count)}
@@ -52,8 +53,8 @@ export async function learningRequest(request,env,u,body={}){
  const url=new URL(request.url),path=url.pathname,method=request.method,db=env.DB;
  if(!path.startsWith('/api/learning/')&&!path.startsWith('/api/teaching/')&&!path.startsWith('/api/questions')&&path!=='/api/topics'&&!path.startsWith('/api/scores'))return null;
  if(path==='/api/topics'&&method==='GET'){
-  if(u.role==='staff'&&u.subject_title){const row=await one(db,'SELECT COUNT(*) count FROM questions WHERE paper=? AND topic=? AND archived=0',u.assigned_paper,u.subject_title);return json([{paper:u.assigned_paper,topic:u.subject_title,count:row.count}])}
-  return json(await read(db,"SELECT COALESCE(paper,'Other') paper,COALESCE(topic,'General') topic,COUNT(*) count FROM questions WHERE archived=0 GROUP BY paper,topic ORDER BY paper,MIN(id)"));
+  if(u.role==='staff'&&u.subject_title){const row=await one(db,'SELECT COUNT(*) count FROM questions WHERE paper=? AND topic=? AND archived=0 AND approval_state=\'approved\'',u.assigned_paper,u.subject_title);return json([{paper:u.assigned_paper,topic:u.subject_title,count:row.count}])}
+  return json(await read(db,"SELECT COALESCE(paper,'Other') paper,COALESCE(topic,'General') topic,COUNT(*) count FROM questions WHERE archived=0 AND approval_state='approved' GROUP BY paper,topic ORDER BY paper,MIN(id)"));
  }
  if(path.startsWith('/api/questions')){
   if(!teacher(u))return json({error:'Staff access required'},403);
@@ -66,12 +67,17 @@ export async function learningRequest(request,env,u,body={}){
    if(edit){const old=await one(db,'SELECT * FROM questions WHERE id=?',Number(edit[1]));if(!old)return json({error:'Question not found'},404);if(!allowed(u,old.paper,old.topic))return json({error:'Different subject'},403);
     if(Object.keys(body).length===1&&typeof body.archived==='boolean'){await run(db,'UPDATE questions SET archived=? WHERE id=?',body.archived?1:0,old.id);return json({message:body.archived?'Question archived. Previous results are unchanged.':'Question restored.'})}
     const q={...old,...body};if(!validateQuestion(q)||!allowed(u,q.paper,q.topic))return json({error:'Complete all question fields and use your assigned subject'},400);
+    if(u.role==='staff'){await run(db,'INSERT INTO question_submissions(question_id,author_id,payload) VALUES (?,?,?)',old.id,u.id,JSON.stringify(q));return json({message:'Changes submitted for administrator approval. The current approved question stays available.'})}
     await run(db,'UPDATE questions SET question=?,option_a=?,option_b=?,option_c=?,option_d=?,correct_option=?,paper=?,topic=?,explanation=?,difficulty=? WHERE id=?',q.question,q.option_a,q.option_b,q.option_c,q.option_d,q.correct_option.toUpperCase(),q.paper,q.topic,q.explanation||'',q.difficulty||'unrated',old.id);return json({message:'Question updated. Existing attempts retain their original question.'});
    }
    const raw=path.endsWith('/bulk')?body.questions:[body];if(!Array.isArray(raw)||!raw.length||raw.length>500)return json({error:'Import 1 to 500 questions at a time'},400);
    const qs=raw.map(q=>({...q,paper:q.paper||body.paper||u.assigned_paper||'Other',topic:q.topic||body.topic||u.subject_title||'General'}));
    if(!qs.every(validateQuestion))return json({error:'Each question needs four options, an A-D answer, paper and topic. Check difficulty and explanation fields.'},400);
    if(qs.some(q=>!allowed(u,q.paper,q.topic)))return json({error:'You can only upload to your assigned paper and subject'},403);
+   if(u.role==='staff'){
+    for(const q of qs){const created=await run(db,"INSERT INTO questions(question,option_a,option_b,option_c,option_d,correct_option,paper,topic,explanation,difficulty,approval_state) VALUES (?,?,?,?,?,?,?,?,?,?,'pending')",q.question,q.option_a,q.option_b,q.option_c,q.option_d,q.correct_option.toUpperCase(),q.paper,q.topic,q.explanation||'',q.difficulty||'unrated');await run(db,'INSERT INTO question_submissions(question_id,author_id,payload) VALUES (?,?,?)',created.meta.last_row_id,u.id,JSON.stringify(q))}
+    return json({message:`${qs.length} question(s) submitted for administrator approval.`});
+   }
    for(let i=0;i<qs.length;i+=40)await db.batch(qs.slice(i,i+40).map(q=>db.prepare('INSERT INTO questions(question,option_a,option_b,option_c,option_d,correct_option,paper,topic,explanation,difficulty) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(q.question,q.option_a,q.option_b,q.option_c,q.option_d,q.correct_option.toUpperCase(),q.paper,q.topic,q.explanation||'',q.difficulty||'unrated')));
    return json({message:`${qs.length} question(s) added.`});
   }
@@ -104,8 +110,9 @@ export async function learningRequest(request,env,u,body={}){
    const starts=Date.parse(body.startsAt),ends=Date.parse(body.endsAt),duration=Number(body.durationMinutes),count=Number(body.questionCount),difficulty=body.difficulty||'all';
    if(!Number.isFinite(starts)||!Number.isFinite(ends)||ends<=starts||!Number.isInteger(duration)||duration<1||duration>240||!Number.isInteger(count)||count<1||count>100||!['all','balanced','easy','medium','hard','unrated'].includes(difficulty)||!['immediate','manual'].includes(body.releasePolicy)||typeof body.instructions!=='string'||body.instructions.length>5000)return json({error:'Check exam window, 1-240 minute duration, 1-100 questions and result policy'},400);
    const groupId=body.groupId?Number(body.groupId):null;if(groupId&&!owned(u,await one(db,'SELECT * FROM class_groups WHERE id=?',groupId)))return json({error:'Select one of your class groups'},403);
-   const pool=await read(db,'SELECT * FROM questions WHERE paper=? AND topic=? AND archived=0',body.paper,body.topic);if(chooseQuestions(pool,count,difficulty).length<count)return json({error:'Not enough active questions for the selected topic and difficulty'},400);
-   const created=await run(db,'INSERT INTO exams(owner_id,title,paper,topic,group_id,starts_at,ends_at,duration_minutes,question_count,difficulty,release_policy,instructions) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',u.id,body.title.trim(),body.paper,body.topic,groupId,new Date(starts).toISOString().slice(0,19).replace('T',' '),new Date(ends).toISOString().slice(0,19).replace('T',' '),duration,count,difficulty,body.releasePolicy,body.instructions);return json({id:created.meta.last_row_id,message:'Exam scheduled.'});
+   const pool=await read(db,'SELECT * FROM questions WHERE paper=? AND topic=? AND archived=0 AND approval_state=\'approved\'',body.paper,body.topic);if(chooseQuestions(pool,count,difficulty).length<count)return json({error:'Not enough active questions for the selected topic and difficulty'},400);
+   if(body.accessCode&&(!text(body.accessCode,32)||!/^[a-zA-Z0-9-]+$/.test(body.accessCode)))return json({error:'Exam code must be 1–32 letters, numbers or hyphens.'},400);
+   const created=await run(db,'INSERT INTO exams(owner_id,title,paper,topic,group_id,starts_at,ends_at,duration_minutes,question_count,difficulty,release_policy,instructions) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',u.id,body.title.trim(),body.paper,body.topic,groupId,new Date(starts).toISOString().slice(0,19).replace('T',' '),new Date(ends).toISOString().slice(0,19).replace('T',' '),duration,count,difficulty,body.releasePolicy,body.instructions);await run(db,'UPDATE exams SET access_code=?,shuffle_options=? WHERE id=?',body.accessCode?body.accessCode.toUpperCase():null,body.shuffleOptions===false?0:1,created.meta.last_row_id);return json({id:created.meta.last_row_id,message:'Exam scheduled.'});
   }
   const action=path.match(/^\/api\/teaching\/exams\/(\d+)\/(release|cancel|attendance)$/);
   if(action){const exam=await one(db,'SELECT * FROM exams WHERE id=?',Number(action[1]));if(!owned(u,exam))return json({error:'Exam not found'},404);
@@ -136,21 +143,23 @@ export async function learningRequest(request,env,u,body={}){
  if(path==='/api/learning/home'&&method==='GET'){
   const exams=await read(db,"SELECT e.*,g.name group_name,a.id attempt_id,a.status attempt_status FROM exams e LEFT JOIN class_groups g ON g.id=e.group_id LEFT JOIN learning_attempts a ON a.exam_id=e.id AND a.student_id=? WHERE e.cancelled=0 AND (e.group_id IS NULL OR EXISTS(SELECT 1 FROM group_members m WHERE m.group_id=e.group_id AND m.student_id=?)) ORDER BY e.starts_at DESC LIMIT 100",u.id,u.id);
   const announcements=await read(db,'SELECT a.*,g.name group_name FROM announcements a LEFT JOIN class_groups g ON g.id=a.group_id WHERE a.archived=0 AND (a.group_id IS NULL OR EXISTS(SELECT 1 FROM group_members m WHERE m.group_id=a.group_id AND m.student_id=?)) ORDER BY a.id DESC LIMIT 100',u.id);
+  const extras=await read(db,'SELECT exam_id,extra_minutes FROM accommodations WHERE student_id=?',u.id);
   const drafts=await read(db,"SELECT * FROM learning_attempts WHERE student_id=? AND status='active' ORDER BY started_at DESC",u.id);const active=[];for(let a of drafts){if(a.deadline&&Date.now()>=millis(a.deadline))await scoreAttempt(db,a);else active.push({id:a.id,title:topicLabel(a.paper,a.topic),mode:a.mode,deadline:iso(a.deadline)})}
-  return json({exams:exams.map(e=>({...e,startsAt:iso(e.starts_at),endsAt:iso(e.ends_at)})),announcements,active,serverTime:new Date().toISOString()});
+  return json({exams:await Promise.all(exams.map(async e=>{const extra=extras.find(a=>a.exam_id===e.id);const {access_code,...safe}=e;return {...safe,requiresCode:!!access_code,extraMinutes:extra?.extra_minutes||0,startsAt:iso(e.starts_at),endsAt:iso(e.ends_at)}})),announcements,active,serverTime:new Date().toISOString()});
  }
  if(path==='/api/learning/progress'&&method==='GET'){
-  const scores=await releasedScores(db,u.id),topics=await read(db,'SELECT paper,topic,COUNT(*) count FROM questions WHERE archived=0 GROUP BY paper,topic');
+  const scores=await releasedScores(db,u.id),topics=await read(db,'SELECT paper,topic,COUNT(*) count FROM questions WHERE archived=0 AND approval_state=\'approved\' GROUP BY paper,topic');
   return json(topics.map(t=>{const relevant=scores.filter(s=>s.topic===topicLabel(t.paper,t.topic)),seen=new Set(),correct=new Map();for(const s of relevant)for(const q of JSON.parse(s.review_json||'[]')){seen.add(q.question);if(!correct.has(q.question))correct.set(q.question,q.correct)}return {...t,attempts:relevant.length,average:relevant.length?Math.round(relevant.reduce((n,s)=>n+(s.total?s.score/s.total*100:0),0)/relevant.length):null,best:relevant.length?Math.round(Math.max(...relevant.map(s=>s.total?s.score/s.total*100:0))):null,covered:Math.min(seen.size,t.count),correctQuestions:[...correct.values()].filter(Boolean).length}}));
  }
  if(path==='/api/learning/attempts'&&method==='POST'){
   const exam=body.examId?await visibleExam(db,u,Number(body.examId)):null;if(body.examId&&!exam)return json({error:'You are not assigned to this exam'},403);
-  if(exam){if(Date.now()<millis(exam.starts_at))return json({error:'The exam has not started yet'},403);const existing=await one(db,'SELECT * FROM learning_attempts WHERE exam_id=? AND student_id=?',exam.id,u.id);if(existing)return json(await attemptView(db,existing,u));if(Date.now()>=millis(exam.ends_at))return json({error:'The exam submission window has closed'},403)}
+  if(exam){if(Date.now()<millis(exam.starts_at))return json({error:'The exam has not started yet'},403);const existing=await one(db,'SELECT * FROM learning_attempts WHERE exam_id=? AND student_id=?',exam.id,u.id);if(existing)return json(await attemptView(db,existing,u));if(exam.access_code&&String(body.accessCode||'').toUpperCase()!==exam.access_code)return json({error:'Enter the exam access code provided by your teacher.'},403);if(Date.now()>=millis(exam.ends_at))return json({error:'The exam submission window has closed'},403)}
   const paper=exam?.paper||body.paper,topic=exam?.topic||body.topic;if(!text(paper)||!text(topic))return json({error:'Select a paper and topic'},400);
   if(!exam){const existing=await one(db,"SELECT * FROM learning_attempts WHERE student_id=? AND mode='practice' AND paper=? AND topic=? AND status='active' ORDER BY started_at DESC LIMIT 1",u.id,paper,topic);if(existing)return json(await attemptView(db,existing,u))}
   const difficulty=exam?.difficulty||body.difficulty||'all';if(!['all','balanced','easy','medium','hard','unrated'].includes(difficulty))return json({error:'Invalid difficulty'},400);
-  const count=exam?.question_count||Math.min(50,Math.max(1,Number(body.questionCount)||50));let pool=body.retryWrong&&!exam?await wrongQuestions(db,u.id,paper,topic):await read(db,'SELECT * FROM questions WHERE paper=? AND topic=? AND archived=0',paper,topic);const questions=chooseQuestions(pool,count,difficulty);if(exam&&questions.length<exam.question_count)return json({error:'The active question bank has changed. Ask your teacher to restore enough questions.'},400);if(!questions.length)return json({error:body.retryWrong?'No previously incorrect active questions match this selection.':'No active questions match this selection.'},400);
-  const id=crypto.randomUUID(),deadline=exam?new Date(Math.min(Date.now()+exam.duration_minutes*60000,millis(exam.ends_at))).toISOString().slice(0,19).replace('T',' '):null;
+  const count=exam?.question_count||Math.min(50,Math.max(1,Number(body.questionCount)||50));let pool=body.retryWrong&&!exam?await wrongQuestions(db,u.id,paper,topic):await read(db,'SELECT * FROM questions WHERE paper=? AND topic=? AND archived=0 AND approval_state=\'approved\'',paper,topic);if(body.dueOnly&&!exam){const due=new Set((await revisionItems(db,u.id)).filter(r=>r.due).map(r=>r.id));pool=pool.filter(q=>due.has(q.id))}let questions=chooseQuestions(pool,count,difficulty);if(!exam||exam.shuffle_options)questions=questions.map(shuffleOptions);if(exam&&questions.length<exam.question_count)return json({error:'The active question bank has changed. Ask your teacher to restore enough questions.'},400);if(!questions.length)return json({error:body.retryWrong?'No previously incorrect active questions match this selection.':'No active questions match this selection.'},400);
+  const extra=exam?await one(db,'SELECT extra_minutes FROM accommodations WHERE exam_id=? AND student_id=?',exam.id,u.id):null;
+  const id=crypto.randomUUID(),deadline=exam?new Date(Math.min(Date.now()+(exam.duration_minutes+(extra?.extra_minutes||0))*60000,millis(exam.ends_at))).toISOString().slice(0,19).replace('T',' '):null;
   try{await run(db,'INSERT INTO learning_attempts(id,student_id,exam_id,paper,topic,mode,started_at,deadline,snapshot_json) VALUES (?,?,?,?,?,?,?,?,?)',id,u.id,exam?.id||null,paper,topic,exam?'exam':'practice',utc(),deadline,JSON.stringify(questions))}catch(e){if(exam){const current=await one(db,'SELECT * FROM learning_attempts WHERE exam_id=? AND student_id=?',exam.id,u.id);if(current)return json(await attemptView(db,current,u))}throw e}
   return json(await attemptView(db,await one(db,'SELECT * FROM learning_attempts WHERE id=?',id),u));
  }
