@@ -1,3 +1,4 @@
+import {snapshotVersion} from './classroom.js';
 const json=(d,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 const rows=async(db,s,...a)=>(await db.prepare(s).bind(...a).all()).results;
 const one=(db,s,...a)=>db.prepare(s).bind(...a).first();
@@ -13,7 +14,7 @@ export async function revisionItems(db,id){
  const bank=await rows(db,'SELECT * FROM questions WHERE '+activeQuestion),now=Date.now();
  return bank.flatMap(q=>{const r=latest.get('id:'+q.id)||latest.get('text:'+q.question);if(!r)return [];const days=r.correct?7:2,due=Date.parse(r.at.replace(' ','T')+'Z')+days*86400000;return [{id:q.id,paper:q.paper,topic:q.topic,correct:!!r.correct,dueAt:new Date(due).toISOString(),due:due<=now}]});
 }
-const tables=['users','questions','scores','metadata','class_groups','group_members','exams','learning_attempts','announcements','password_reset_audit','question_submissions','question_flags','resources','accommodations','recovery_requests'];
+const tables=['users','questions','scores','metadata','class_groups','group_members','exams','learning_attempts','announcements','password_reset_audit','question_submissions','question_flags','resources','accommodations','recovery_requests','revision_assignments','mistake_notebook','question_versions'];
 export async function supportRequest(request,env,u,body,{hash,verify}={}){
  const url=new URL(request.url),p=url.pathname,m=request.method,db=env.DB;
  // Recovery requests never reveal whether a username exists. No password is changed here.
@@ -62,7 +63,7 @@ export async function supportRequest(request,env,u,body,{hash,verify}={}){
  if(p.match(/^\/api\/support\/submissions\/\d+$/)&&m==='POST'&&u.role==='admin'){
   const s=await one(db,"SELECT * FROM question_submissions WHERE id=? AND status='pending'",Number(p.split('/').pop()));if(!s)return json({error:'Pending submission not found'},404);
   if(!['approve','reject'].includes(body.action)||typeof (body.note||'')!=='string'||(body.note||'').length>2000)return json({error:'Choose approve or reject.'},400);
-  const q=JSON.parse(s.payload),stmts=[];
+  const q=JSON.parse(s.payload),stmts=[];if(body.action==='approve'){const current=await one(db,'SELECT * FROM questions WHERE id=?',s.question_id);if(current)stmts.push(snapshotVersion(db,current,u,'Before approving staff submission '+s.id))}
   if(body.action==='approve')stmts.push(db.prepare("UPDATE questions SET question=?,option_a=?,option_b=?,option_c=?,option_d=?,correct_option=?,paper=?,topic=?,explanation=?,difficulty=?,approval_state='approved' WHERE id=?").bind(q.question,q.option_a,q.option_b,q.option_c,q.option_d,q.correct_option.toUpperCase(),q.paper,q.topic,q.explanation||'',q.difficulty||'unrated',s.question_id));
   else stmts.push(db.prepare("UPDATE questions SET approval_state='rejected' WHERE id=? AND approval_state='pending'").bind(s.question_id));
   stmts.push(db.prepare('UPDATE question_submissions SET status=?,note=? WHERE id=?').bind(body.action==='approve'?'approved':'rejected',body.note||'',s.id));await db.batch(stmts);return json({message:'Question submission '+(body.action==='approve'?'approved.':'rejected.')});
@@ -95,6 +96,7 @@ export async function supportRequest(request,env,u,body,{hash,verify}={}){
   const b=body.backup;if(b?.format!=='beghin-mcq-backup-v1'||!b.tables||tables.some(t=>!Array.isArray(b.tables[t])))return json({error:'Unsupported backup file.'},400);
   const count=tables.reduce((n,t)=>n+b.tables[t].length,0);if(count>20000)return json({error:'This backup is too large for browser restore. Contact the administrator for a managed restore.'},413);
   if(!b.tables.users.some(a=>a.id===u.id&&a.username===u.username&&a.role==='admin'))return json({error:'This backup does not contain the current administrator account.'},400);
+  const protectedAdmins=await rows(db,'SELECT u.id,u.username FROM user_mfa m JOIN users u ON u.id=m.user_id WHERE m.enabled=1');if(protectedAdmins.some(a=>!b.tables.users.some(x=>x.id===a.id&&x.username===a.username&&x.role==='admin')))return json({error:'This backup does not preserve every administrator with two-factor authentication enabled.'},400);
   const columns={};for(const t of tables)columns[t]=(await rows(db,'PRAGMA table_info('+t+')')).map(c=>c.name);
   for(const t of tables)for(const row of b.tables[t])if(!row||typeof row!=='object'||Array.isArray(row)||Object.keys(row).length!==columns[t].length||columns[t].some(c=>!Object.hasOwn(row,c)||(row[c]!==null&&!['string','number'].includes(typeof row[c]))))return json({error:'Backup schema does not match this website.'},400);
   for(const r of b.tables.resources)if(r.url){try{const link=new URL(r.url);if(link.protocol!=='https:'||link.username||link.password)throw Error()}catch{return json({error:'Backup contains an invalid resource link.'},400)}}

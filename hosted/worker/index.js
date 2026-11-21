@@ -1,3 +1,5 @@
+import {classroomRequest} from './classroom.js';
+import {mfaRequest,verifyMfa} from './mfa.js';
 import {initializeResources} from './starter-resources.js';
 import {supportRequest} from './support.js';
 import bcrypt from 'bcryptjs';
@@ -132,6 +134,7 @@ async function handle(request,env){
 
   if(body.portal && body.portal!==u.role)return json({error:'Use the '+(u.role==='admin'?'Administrator':u.role==='staff'?'Staff':'Student')+' login for this account.'},403);
 
+  if(!await verifyMfa(env,u.id,body.code))return json({error:'Enter a fresh authenticator code or an unused recovery code. After repeated failures, wait five minutes.',requiresTwoFactor:true},401);
   if(!u.password.startsWith('pbkdf2$'))await env.DB.prepare('UPDATE users SET password=? WHERE id=?').bind(await hash(body.password),u.id).run();
 
   if(token)await env.DB.prepare('DELETE FROM sessions WHERE token=?').bind(token).run();
@@ -152,6 +155,8 @@ async function handle(request,env){
 
  }
 
+ const mfa=await mfaRequest(request,env,login,body,verify);if(mfa)return mfa;
+ const classroom=await classroomRequest(request,env,login,body);if(classroom)return classroom;
  const support=await supportRequest(request,env,login,body,{hash,verify});if(support)return support;
  if(!login)return json({error:'Not logged in'},401);
 

@@ -46,3 +46,17 @@ All 500 original questions include answer explanations. Five original diagrams a
 - Restore accepts this schema's backups, validates fields, previews counts, requires typed confirmation and current admin password, then replaces data in one D1 transaction. All sessions are revoked; the current administrator password is retained. Browser restore is limited to 20,000 rows and a 10 MB request. No automatic backup schedule is configured.
 
 Public address: https://beghin-mcq.beghin.workers.dev/
+
+## Classroom tools
+
+- Class performance groups the latest answer per student/question by topic, across up to 5,000 recent scored attempts. Teacher views include submitted results awaiting release and practice. Only owned classes and permitted subjects are accessible.
+- Pre-exam readiness checks class eligibility, the exam code, the time window, question availability, connectivity and local answer recovery without creating an attempt or starting its timer. It cannot guarantee future network availability.
+- Teachers assign topic practice to a class with a due date, question count and instructions. One durable attempt per student/assignment supports resuming and on-time/late completion reporting.
+- Students save private question notes from practice or released exam reviews. Unreleased or active exam answers cannot be copied into the notebook.
+- Exams support up to ten distinct topic sections and 100 questions total, with exact per-section counts and difficulty filters. Marks remain two per question; topic progress includes mixed exams.
+- Previous question snapshots, actor names and reasons are recorded on edits, approvals, archiving and restores. Administrator restore creates another history entry and leaves existing attempt snapshots intact.
+- Question/import duplicates are checked with normalised exact matching and token similarity (at least five tokens, Jaccard >=0.82). Warnings require deliberate confirmation; similarity is a heuristic rather than proof of duplication.
+- Optional administrator TOTP follows RFC 6238 (SHA-1, six digits, 30-second steps), with manual authenticator pairing, one-use hashed recovery codes, replay protection, temporary failure blocking and session revocation on enable/disable. Setup secrets are encrypted in D1 using an AES-GCM wrapping key derived from the existing runtime bootstrap secret. Preserve ADMIN_PASSWORD_HASH in the hosting environment even after changing the administrator login password. The owner must pair their own authenticator; deployment does not activate MFA on any account.
+- Backups now include revision assignments, notebook entries and question versions. MFA setup and recovery secrets are excluded and preserved in place during restore; restore rejects backups that remove or rename an MFA-protected administrator. A backup from an older schema may require migration before restore.
+
+Reference: https://www.rfc-editor.org/rfc/rfc6238
