@@ -1,4 +1,4 @@
-# IGCSE Computer Science MCQ Portal
+# Coding Lab Learning Portal
 
 Public website: https://beghin-mcq.beghin.workers.dev/
 
@@ -26,3 +26,5 @@ The Render configuration is an optional paid alternative, not the current hostin
 The deployed version now includes personal and spaced revision, exam codes and shuffled options, staff question approval, question quality analysis, student question reports, topic resources, accessibility options, verified account recovery, and encrypted full data backup/restore. See `hosted/README.md` for behaviour and limits.
 
 Classroom tools add class performance analysis, exam readiness checks, staff-assigned revision, private mistake notebooks, question version history, duplicate checks, multi-topic exams, and optional administrator two-factor authentication.
+
+The public front page uses the owner-provided Coding Lab flyer, its complete campaign text, a responsive navy/gold/turquoise layout, and student/staff login panels. The original flyer is embedded directly, without external image dependencies.
