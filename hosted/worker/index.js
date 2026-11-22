@@ -77,7 +77,7 @@ const staffView=u=>({id:u.id,username:u.username,name:u.display_name||u.username
 
 const staffFields=b=>typeof b.name==='string'&&b.name.trim()&&b.name.length<=120&&typeof b.subjectTitle==='string'&&b.subjectTitle.trim()&&b.subjectTitle.length<=160&&typeof b.paper==='string'&&b.paper.trim()&&b.paper.length<=80&&typeof b.canUpload==='boolean'&&typeof b.active==='boolean';
 
-const cookie=(token,age=28800)=>`mcq_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
+const cookie=(token,age=28800,portal='')=>`mcq_session${portal?'_'+portal:''}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;
 
 const result=row=>({id:row.id,score:row.score,total:row.total,topic:row.topic,marks:row.score*2,totalMarks:row.total*2,review:row.review_json?JSON.parse(row.review_json):null});
 
@@ -102,11 +102,21 @@ async function handle(request,env){
  await initializeAdmin(env);
  await initializeResources(env.DB);
 
- const rawToken=request.headers.get('Cookie')?.match(/(?:^|;\s*)mcq_session=([a-f0-9]{64})(?:;|$)/)?.[1];
+ const portalValue=request.headers.get('X-MCQ-Portal')||url.searchParams.get('portal')||'';
+ const sessionPortal=['student','staff','admin'].includes(portalValue)?portalValue:'';
+ const cookieText=request.headers.get('Cookie')||'';
+ const selectedCookie=sessionPortal?'mcq_session_'+sessionPortal:'mcq_session';
+ const roleToken=cookieText.match(new RegExp('(?:^|;\\s*)'+selectedCookie+'=([a-f0-9]{64})(?:;|$)'))?.[1];
+ const legacyToken=cookieText.match(/(?:^|;\s*)mcq_session=([a-f0-9]{64})(?:;|$)/)?.[1];
+ const rawToken=roleToken||legacyToken;
 
  const token=rawToken?await digest(rawToken):null;
 
- const login=token?await env.DB.prepare('SELECT sessions.token,sessions.quiz_json,users.id,users.username,users.role,users.display_name,users.subject_title,users.assigned_paper,users.can_upload,users.can_report,users.is_active FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=? AND sessions.expires>? AND users.is_active=1').bind(token,Date.now()).first():null;
+ let login=token?await env.DB.prepare('SELECT sessions.token,sessions.quiz_json,users.id,users.username,users.role,users.display_name,users.subject_title,users.assigned_paper,users.can_upload,users.can_report,users.is_active FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=? AND sessions.expires>? AND users.is_active=1').bind(token,Date.now()).first():null;
+
+ if(sessionPortal&&login?.role!==sessionPortal)login=null;
+ const expectedUser=request.headers.get('X-MCQ-User');
+ if(expectedUser&&login&&String(login.id)!==expectedUser)return json({error:'This tab belongs to another account. Sign in again before continuing.',code:'SESSION_CHANGED'},409);
 
  let body={};
 
@@ -139,7 +149,7 @@ async function handle(request,env){
   if(!await verifyMfa(env,u.id,body.code))return json({error:'Enter a fresh authenticator code or an unused recovery code. After repeated failures, wait five minutes.',requiresTwoFactor:true},401);
   if(!u.password.startsWith('pbkdf2$'))await env.DB.prepare('UPDATE users SET password=? WHERE id=?').bind(await hash(body.password),u.id).run();
 
-  if(token)await env.DB.prepare('DELETE FROM sessions WHERE token=?').bind(token).run();
+  if(login&&token)await env.DB.batch([env.DB.prepare('UPDATE login_activity SET logout_at=CURRENT_TIMESTAMP WHERE session_token=? AND logout_at IS NULL').bind(token),env.DB.prepare('DELETE FROM sessions WHERE token=?').bind(token)]);
 
   const value=hex(crypto.getRandomValues(new Uint8Array(32)));
 
@@ -147,19 +157,20 @@ async function handle(request,env){
   if(['student','staff'].includes(u.role))statements.push(env.DB.prepare('INSERT INTO login_activity(user_id,username,display_name,role,expires_at,session_token) VALUES (?,?,?,?,?,?)').bind(u.id,u.username,u.display_name||u.username,u.role,new Date(expires).toISOString().slice(0,19).replace('T',' '),sessionToken));
   await env.DB.batch(statements);
 
-  return json({role:u.role,username:u.username},200,{'Set-Cookie':cookie(value)});
+  return json({role:u.role,username:u.username},200,{'Set-Cookie':cookie(value,28800,sessionPortal)});
 
  }
 
  if(route==='/api/logout'&&method==='POST'){
 
-  if(token)await env.DB.batch([env.DB.prepare('UPDATE login_activity SET logout_at=CURRENT_TIMESTAMP WHERE session_token=? AND logout_at IS NULL').bind(token),env.DB.prepare('DELETE FROM sessions WHERE token=?').bind(token)]);
+  if(login&&token)await env.DB.batch([env.DB.prepare('UPDATE login_activity SET logout_at=CURRENT_TIMESTAMP WHERE session_token=? AND logout_at IS NULL').bind(token),env.DB.prepare('DELETE FROM sessions WHERE token=?').bind(token)]);
 
-  return json({message:'Logged out'},200,{'Set-Cookie':cookie('',0)});
+  return json({message:'Logged out'},200,{'Set-Cookie':cookie('',0,sessionPortal)});
 
  }
 
  const activity=await loginActivityRequest(request,env,login);if(activity)return activity;
+ if(login?.role==='student'&&route.startsWith('/api/teaching/'))return json({error:'This browser tab is signed in as a student. Open Staff login and sign in with your staff account, then reload this page.',code:'STAFF_LOGIN_REQUIRED'},403);
  const boundary=await studentBoundary(request,env,login,body);if(boundary)return boundary;
  const access=await accessRequest(request,env,login,body);if(access)return access;
  const mfa=await mfaRequest(request,env,login,body,verify);if(mfa)return mfa;
@@ -180,7 +191,7 @@ async function handle(request,env){
 
   await env.DB.batch([env.DB.prepare('UPDATE users SET password=? WHERE id=?').bind(await hash(body.password),login.id),env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(login.id),env.DB.prepare('INSERT INTO password_reset_audit(actor_id,target_id) VALUES (?,?)').bind(login.id,login.id)]);
 
-  return json({message:'Password changed. Please sign in again.'},200,{'Set-Cookie':cookie('',0)});
+  return json({message:'Password changed. Please sign in again.'},200,{'Set-Cookie':cookie('',0,sessionPortal)});
 
  }
 

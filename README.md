@@ -38,3 +38,5 @@ Administrators can monitor successful student/staff sign-ins by date, time, acco
 Exam access: Staff exam cards show approved usernames. Exact username search distinguishes similar accounts; returning students refresh permissions immediately. Duplicate scheduling clicks are blocked.
 
 Staff review: Teaching Workspace now lists submitted exams and provides answer-level review with individual mark approval. Manual results remain hidden until the owning staff member or administrator approves. Approvals retain the reviewer and UTC timestamp.
+
+Session fix: student, staff and administrator logins now use separate HttpOnly sessions. Signing in or out as a student no longer replaces the staff login in another tab. API requests identify the page role and reject stale account tabs.
