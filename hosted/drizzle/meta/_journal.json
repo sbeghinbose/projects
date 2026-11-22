@@ -64,6 +64,13 @@
       "when": 1795266627768,
       "tag": "0008_staff_exam_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795316508849,
+      "tag": "0009_login_activity",
+      "breakpoints": true
     }
   ]
 }

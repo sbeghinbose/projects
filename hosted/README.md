@@ -76,3 +76,11 @@ Migration 0008 adds exam_students and a two-minute allowance. Existing explicitl
 Every exam receives two extra minutes: deadline = minimum(start + duration + individual accommodation + 2 minutes, closing time + 2 minutes). A new attempt must start within the original window. Late answers are still ignored; marking uses answers saved before the deadline. Result release remains controlled by the teacher.
 
 Student dashboards refresh permissions every 15 seconds while visible, and active exams check revocation on the same interval. Server denial is immediate on requests. Content already downloaded cannot be recalled from an offline device. Old student classroom/support pages redirect to the restricted dashboard. Legacy untimed revision assignment creation is retired in favour of selected-student timed exams.
+
+## Administrator login activity
+
+Migration 0009 creates durable login_activity records. Successful student/staff sign-ins are recorded atomically with session creation after password, portal and MFA verification. Each record preserves the account ID, username, display name, role, server UTC login time, expiry and a hashed session reference. Raw passwords, MFA codes and session bearer tokens are never recorded. Explicit logout sets logout_at; expiry or password-reset revocation does not invent an explicit logout time. Existing sessions and earlier sign-ins are not backfilled.
+
+The administrator-only /api/admin/login-activity report supports inclusive local date ranges, students/staff filters, name/username search, IANA timezone selection, 50-row pagination and all-matching-record PDF/DOCX/XLSX downloads. Exports above 10,000 records require narrower filters. Summary counts cover the whole selection, including repeat sign-ins. The browser can refresh every 60 seconds while the admin page is visible. Active session indicates validity rather than proof that the user is online.
+
+Login activity is included in encrypted administrator data backups. Restore semantics replace it with the chosen backup together with other data, while revoked session references remain unusable. The default report timezone is Asia/Kolkata; Indian/Maldives is also offered.

@@ -1,0 +1,25 @@
+import {dayRange,exportReport} from './reports.js';
+const json=(d,s=200)=>new Response(JSON.stringify(d),{status:s,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
+const read=async(db,s,...a)=>(await db.prepare(s).bind(...a).all()).results;
+const one=(db,s,...a)=>db.prepare(s).bind(...a).first();
+export async function loginActivityRequest(request,env,u){
+ const url=new URL(request.url);if(url.pathname!=='/api/admin/login-activity')return null;
+ if(!u||u.role!=='admin')return json({error:'Administrator access required'},403);
+ if(request.method!=='GET')return json({error:'Method not allowed'},405);
+ const timeZone=url.searchParams.get('timeZone')||'Asia/Kolkata',role=url.searchParams.get('role')||'all',format=url.searchParams.get('format')||'json',search=(url.searchParams.get('search')||'').trim(),from=url.searchParams.get('from')||'',to=url.searchParams.get('to')||'';
+ if(!['all','student','staff'].includes(role)||!['json','pdf','docx','xlsx'].includes(format)||search.length>120)return json({error:'Choose a valid account type and PDF, Word DOCX or Excel XLSX format.'},400);
+ let dateFormat,timeFormat,fullFormat;try{dateFormat=new Intl.DateTimeFormat('en-GB',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'});timeFormat=new Intl.DateTimeFormat('en-GB',{timeZone,hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});fullFormat=new Intl.DateTimeFormat('en-GB',{timeZone,dateStyle:'medium',timeStyle:'medium'})}catch{return json({error:'Choose a valid timezone, for example Asia/Kolkata or Indian/Maldives.'},400)}
+ const where=["a.role IN ('student','staff')"],args=[];
+ if(role!=='all'){where.push('a.role=?');args.push(role)}
+ if(from||to){try{if(!from||!to||from>to)throw Error();const start=dayRange(from,timeZone).start,end=dayRange(to,timeZone).end;where.push('a.login_at>=? AND a.login_at<?');args.push(start,end)}catch{return json({error:'Choose valid start and end dates, with the start on or before the end.'},400)}}
+ if(search){where.push('(instr(lower(a.username),lower(?))>0 OR instr(lower(a.display_name),lower(?))>0)');args.push(search,search)}
+ const condition=where.join(' AND '),summary=await one(env.DB,"SELECT COUNT(*) logins,COUNT(DISTINCT a.user_id) accounts,COALESCE(SUM(a.role='student'),0) studentLogins,COALESCE(SUM(a.role='staff'),0) staffLogins FROM login_activity a WHERE "+condition,...args);
+ const page=Number(url.searchParams.get('page')||1),pageSize=50;if(!Number.isSafeInteger(page)||page<1||page>1000000)return json({error:'Choose a valid report page.'},400);
+ if(format!=='json'&&summary.logins>10000)return json({error:'More than 10,000 logins match. Narrow the date range, account type or name before downloading.'},413);
+ const now=new Date().toISOString().slice(0,19).replace('T',' '),data=await read(env.DB,'SELECT a.id,a.user_id,a.username,a.display_name,a.role,a.login_at,a.logout_at,a.expires_at,CASE WHEN a.logout_at IS NOT NULL THEN \'Signed out\' WHEN a.expires_at<=? THEN \'Expired\' WHEN s.token IS NULL THEN \'Session ended\' ELSE \'Active session\' END session_state FROM login_activity a LEFT JOIN sessions s ON s.token=a.session_token WHERE '+condition+' ORDER BY a.login_at DESC,a.id DESC LIMIT ? OFFSET ?',now,...args,format==='json'?pageSize:10000,format==='json'?(page-1)*pageSize:0);
+ const utc=v=>new Date(v.replace(' ','T')+'Z'),rows=data.map(a=>[a.display_name,a.username,a.role==='staff'?'Staff':'Student',dateFormat.format(utc(a.login_at)),timeFormat.format(utc(a.login_at)),a.logout_at?fullFormat.format(utc(a.logout_at)):'Not recorded',a.session_state]);
+ const started=await one(env.DB,"SELECT value FROM metadata WHERE key='login-activity-started-at'");
+ const report={kind:'logins',title:'Student and Staff Login Activity',subtitle:(from?from+' to '+to:'All recorded dates')+' | '+(role==='all'?'Students and staff':role)+' | Timezone: '+timeZone+(search?' | Name/username: '+search:''),generatedBy:u.display_name||u.username,generatedAt:new Date().toISOString(),summary:[['Successful sign-ins',summary.logins],['Unique accounts',summary.accounts],['Student sign-ins',summary.studentLogins],['Staff sign-ins',summary.staffLogins],['Recording started',started?fullFormat.format(utc(started.value))+' ('+timeZone+')':'Not recorded'],['Scope','Successful student/staff sign-ins only. Historical sign-ins before recording started are unavailable.'],['Session status','Active session means the session remains valid; it does not prove the person is currently online. Logout time is recorded only for an explicit sign-out.']],headers:['Name','Username','Role','Login date','Login time','Explicit logout','Session state'],rows};
+ if(format==='json')return json({...report,analysis:summary,page,pageSize,totalPages:Math.max(1,Math.ceil(summary.logins/pageSize)),recordingStartedAt:started?.value||null,records:data.map(a=>({id:a.id,userId:a.user_id,username:a.username,name:a.display_name,role:a.role,loginAt:a.login_at,logoutAt:a.logout_at,sessionState:a.session_state}))});
+ return exportReport(report,format,'login-activity'+(from?'-'+from+'-to-'+to:''));
+}

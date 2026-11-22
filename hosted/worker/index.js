@@ -1,3 +1,4 @@
+import {loginActivityRequest} from './login-activity.js';
 import {studentBoundary,accessRequest} from './access.js';
 import {classroomRequest} from './classroom.js';
 import {mfaRequest,verifyMfa} from './mfa.js';
@@ -142,7 +143,9 @@ async function handle(request,env){
 
   const value=hex(crypto.getRandomValues(new Uint8Array(32)));
 
-  await env.DB.prepare('INSERT INTO sessions(token,user_id,expires) VALUES (?,?,?)').bind(await digest(value),u.id,Date.now()+28800000).run();
+  const sessionToken=await digest(value),expires=Date.now()+28800000,statements=[env.DB.prepare('INSERT INTO sessions(token,user_id,expires) VALUES (?,?,?)').bind(sessionToken,u.id,expires)];
+  if(['student','staff'].includes(u.role))statements.push(env.DB.prepare('INSERT INTO login_activity(user_id,username,display_name,role,expires_at,session_token) VALUES (?,?,?,?,?,?)').bind(u.id,u.username,u.display_name||u.username,u.role,new Date(expires).toISOString().slice(0,19).replace('T',' '),sessionToken));
+  await env.DB.batch(statements);
 
   return json({role:u.role,username:u.username},200,{'Set-Cookie':cookie(value)});
 
@@ -150,12 +153,13 @@ async function handle(request,env){
 
  if(route==='/api/logout'&&method==='POST'){
 
-  if(token)await env.DB.prepare('DELETE FROM sessions WHERE token=?').bind(token).run();
+  if(token)await env.DB.batch([env.DB.prepare('UPDATE login_activity SET logout_at=CURRENT_TIMESTAMP WHERE session_token=? AND logout_at IS NULL').bind(token),env.DB.prepare('DELETE FROM sessions WHERE token=?').bind(token)]);
 
   return json({message:'Logged out'},200,{'Set-Cookie':cookie('',0)});
 
  }
 
+ const activity=await loginActivityRequest(request,env,login);if(activity)return activity;
  const boundary=await studentBoundary(request,env,login,body);if(boundary)return boundary;
  const access=await accessRequest(request,env,login,body);if(access)return access;
  const mfa=await mfaRequest(request,env,login,body,verify);if(mfa)return mfa;
