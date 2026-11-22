@@ -34,3 +34,5 @@ Four owner-supplied Word documents added 4,000 questions with their answer keys.
 Student access is now locked after registration: announcements and original educational quotes are available, while questions open only through explicitly staff-approved exams. Staff select recipients, chapters, counts, time slots, and may revoke permission. Two extra minutes are included in the personal timer and final closing deadline. Independent practice and student learning-resource/notebook tools are disabled under this policy.
 
 Administrators can monitor successful student/staff sign-ins by date, time, account and timezone, including explicit sign-outs and valid/expired/ended session state. Login activity exports are available as PDF, DOCX and XLSX. Recording starts when migration 0009 is deployed; earlier login history is unavailable.
+
+Exam access: Staff exam cards show approved usernames. Exact username search distinguishes similar accounts; returning students refresh permissions immediately. Duplicate scheduling clicks are blocked.
