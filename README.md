@@ -36,3 +36,5 @@ Student access is now locked after registration: announcements and original educ
 Administrators can monitor successful student/staff sign-ins by date, time, account and timezone, including explicit sign-outs and valid/expired/ended session state. Login activity exports are available as PDF, DOCX and XLSX. Recording starts when migration 0009 is deployed; earlier login history is unavailable.
 
 Exam access: Staff exam cards show approved usernames. Exact username search distinguishes similar accounts; returning students refresh permissions immediately. Duplicate scheduling clicks are blocked.
+
+Staff review: Teaching Workspace now lists submitted exams and provides answer-level review with individual mark approval. Manual results remain hidden until the owning staff member or administrator approves. Approvals retain the reviewer and UTC timestamp.

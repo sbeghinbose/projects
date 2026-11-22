@@ -8,7 +8,7 @@ const scope=(u,q)=>u.role==='admin'||!u.subject_title||(u.assigned_paper===q.pap
 const valid=(s,n=4000)=>typeof s==='string'&&s.trim().length>0&&s.length<=n;
 export const activeQuestion="archived=0 AND approval_state='approved'";
 export function shuffleOptions(q){const letters=['A','B','C','D'],order=[...letters];for(let i=3;i>0;i--){const j=crypto.getRandomValues(new Uint32Array(1))[0]%(i+1);[order[i],order[j]]=[order[j],order[i]]}const out={...q};for(let i=0;i<4;i++)out['option_'+letters[i].toLowerCase()]=q['option_'+order[i].toLowerCase()];out.correct_option=letters[order.indexOf(q.correct_option)];return out}
-async function released(db,id){return rows(db,"SELECT s.* FROM scores s LEFT JOIN exams e ON e.id=s.exam_id WHERE s.student_id=? AND (s.exam_id IS NULL OR e.release_policy='immediate' OR e.results_released=1) ORDER BY s.id DESC LIMIT 1000",id)}
+async function released(db,id){return rows(db,"SELECT s.* FROM scores s LEFT JOIN exams e ON e.id=s.exam_id WHERE s.student_id=? AND (s.exam_id IS NULL OR e.release_policy='immediate' OR e.results_released=1 OR EXISTS(SELECT 1 FROM score_approvals p WHERE p.score_id=s.id)) ORDER BY s.id DESC LIMIT 1000",id)}
 export async function revisionItems(db,id){
  const latest=new Map();for(const s of await released(db,id))for(const q of JSON.parse(s.review_json||'[]')){const key=q.questionId?'id:'+q.questionId:'text:'+q.question;if(!latest.has(key))latest.set(key,{...q,at:s.attempted_at,topicLabel:s.topic})}
  const bank=await rows(db,'SELECT * FROM questions WHERE '+activeQuestion),now=Date.now();

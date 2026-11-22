@@ -35,7 +35,8 @@ async function scoreAttempt(db,a,proposed){
 async function attemptView(db,a,u){
  if(a.status==='active'&&a.deadline&&Date.now()>=millis(a.deadline))a=await scoreAttempt(db,a);
  const exam=a.exam_id?await one(db,'SELECT * FROM exams WHERE id=?',a.exam_id):null;
- const visible=teacher(u)||!exam||exam.release_policy==='immediate'||exam.results_released;
+ const approval=a.status==='submitted'?await one(db,'SELECT p.approved_at FROM score_approvals p JOIN scores s ON s.id=p.score_id WHERE s.attempt_id=?',a.id):null;
+ const visible=teacher(u)||!exam||exam.release_policy==='immediate'||exam.results_released||!!approval;
  const result={id:a.id,examId:a.exam_id,assignmentId:a.assignment_id,title:exam?.title||topicLabel(a.paper,a.topic),paper:a.paper,topic:a.topic,mode:a.mode,status:a.status,startedAt:iso(a.started_at),deadline:iso(a.deadline),serverTime:new Date().toISOString(),answers:JSON.parse(a.answers_json),questions:JSON.parse(a.snapshot_json).map(publicQuestion),resultsAvailable:!!visible};
  if(a.status==='submitted'){
   const score=await one(db,'SELECT * FROM scores WHERE attempt_id=?',a.id);
@@ -45,7 +46,7 @@ async function attemptView(db,a,u){
  return result;
 }
 async function finalizeExam(db,id){const attempts=await read(db,"SELECT * FROM learning_attempts WHERE exam_id=? AND status='active' AND deadline<=?",id,utc());for(const a of attempts)await scoreAttempt(db,a)}
-async function releasedScores(db,student){return read(db,"SELECT s.*,e.release_policy,e.results_released FROM scores s LEFT JOIN exams e ON e.id=s.exam_id WHERE s.student_id=? AND (s.exam_id IS NULL OR e.release_policy='immediate' OR e.results_released=1) ORDER BY s.id DESC LIMIT 1000",student)}
+async function releasedScores(db,student){return read(db,"SELECT s.*,e.release_policy,e.results_released,(SELECT approved_at FROM score_approvals p WHERE p.score_id=s.id) approved_at FROM scores s LEFT JOIN exams e ON e.id=s.exam_id WHERE s.student_id=? AND (s.exam_id IS NULL OR e.release_policy='immediate' OR e.results_released=1 OR EXISTS(SELECT 1 FROM score_approvals p WHERE p.score_id=s.id)) ORDER BY s.id DESC LIMIT 1000",student)}
 async function wrongQuestions(db,student,paper,topic){const scores=await releasedScores(db,student),latest=new Map();for(const s of scores)for(const q of JSON.parse(s.review_json||'[]'))if(!latest.has(q.question))latest.set(q.question,q.correct);const wrong=[...latest].filter(([,correct])=>!correct).map(([q])=>q);if(!wrong.length)return [];const active=await read(db,'SELECT * FROM questions WHERE archived=0 AND approval_state=\'approved\' AND paper=? AND topic=?',paper,topic);return active.filter(q=>wrong.includes(q.question))}
 function chooseQuestions(pool,count,difficulty){
  const shuffled=[...pool];for(let i=shuffled.length-1;i>0;i--){const j=crypto.getRandomValues(new Uint32Array(1))[0]%(i+1);[shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]]}
@@ -90,12 +91,12 @@ export async function learningRequest(request,env,u,body={}){
  }
  if(path==='/api/scores'&&method==='GET'){
   if(u.role!=='student')return json({error:'Student access required'},403);
-  const rows=await read(db,"SELECT s.*,e.release_policy,e.results_released FROM scores s LEFT JOIN exams e ON e.id=s.exam_id WHERE s.student_id=? ORDER BY s.id DESC LIMIT 1000",u.id);
+  const rows=await read(db,"SELECT s.*,e.release_policy,e.results_released,(SELECT approved_at FROM score_approvals p WHERE p.score_id=s.id) approved_at FROM scores s LEFT JOIN exams e ON e.id=s.exam_id WHERE s.student_id=? ORDER BY s.id DESC LIMIT 1000",u.id);
   const permitted=new Set((await read(db,'SELECT p.exam_id FROM exam_students p JOIN exams e ON e.id=p.exam_id WHERE p.student_id=? AND p.revoked=0 AND e.cancelled=0',u.id)).map(p=>p.exam_id));
-  return json(rows.map(s=>{const released=!s.exam_id||s.release_policy==='immediate'||s.results_released;return {id:s.id,topic:s.topic,attempted_at:s.attempted_at,mode:s.mode,attemptId:s.attempt_id,marks:released?s.score*2:null,totalMarks:s.total*2,score:released?s.score:null,total:s.total,hasReview:released&&!!s.review_json&&permitted.has(s.exam_id),resultsAvailable:!!released}}));
+  return json(rows.map(s=>{const released=!s.exam_id||s.release_policy==='immediate'||s.results_released||!!s.approved_at;return {id:s.id,topic:s.topic,attempted_at:s.attempted_at,mode:s.mode,attemptId:s.attempt_id,marks:released?s.score*2:null,totalMarks:s.total*2,score:released?s.score:null,total:s.total,hasReview:released&&!!s.review_json&&permitted.has(s.exam_id),resultsAvailable:!!released}}));
  }
  if(/^\/api\/scores\/\d+$/.test(path)&&method==='GET'){
-  if(u.role!=='student')return json({error:'Student access required'},403);const s=await one(db,'SELECT s.*,e.release_policy,e.results_released FROM scores s LEFT JOIN exams e ON e.id=s.exam_id WHERE s.id=? AND s.student_id=?',Number(path.split('/').pop()),u.id);if(!s)return json({error:'Result not found'},404);if(s.exam_id&&s.release_policy!=='immediate'&&!s.results_released)return json({error:'Your teacher has not released this result'},403);return json({id:s.id,attemptId:s.attempt_id,topic:s.topic,score:s.score,total:s.total,marks:s.score*2,totalMarks:s.total*2,review:s.review_json?JSON.parse(s.review_json):null});
+  if(u.role!=='student')return json({error:'Student access required'},403);const s=await one(db,'SELECT s.*,e.release_policy,e.results_released,(SELECT approved_at FROM score_approvals p WHERE p.score_id=s.id) approved_at FROM scores s LEFT JOIN exams e ON e.id=s.exam_id WHERE s.id=? AND s.student_id=?',Number(path.split('/').pop()),u.id);if(!s)return json({error:'Result not found'},404);if(s.exam_id&&s.release_policy!=='immediate'&&!s.results_released&&!s.approved_at)return json({error:'Your teacher has not released this result'},403);return json({id:s.id,attemptId:s.attempt_id,topic:s.topic,score:s.score,total:s.total,marks:s.score*2,totalMarks:s.total*2,review:s.review_json?JSON.parse(s.review_json):null});
  }
  if(path.startsWith('/api/teaching/')){
   if(!teacher(u))return json({error:'Staff access required'},403);
@@ -111,7 +112,7 @@ export async function learningRequest(request,env,u,body={}){
    for(let i=0;i<students.length;i+=40)await db.batch(students.slice(i,i+40).map(student=>db.prepare('INSERT OR IGNORE INTO group_members(group_id,student_id) VALUES (?,?)').bind(id,student)));return json({id,message:'Class group saved.'});
   }
   if(path==='/api/teaching/exams'&&method==='GET'){
-   const selection="SELECT e.*,g.name group_name,(SELECT COUNT(*) FROM exam_students p WHERE p.exam_id=e.id AND p.revoked=0) approved_count,COALESCE((SELECT group_concat(u.username, ', ') FROM exam_students p JOIN users u ON u.id=p.student_id WHERE p.exam_id=e.id AND p.revoked=0),'') approved_usernames FROM exams e LEFT JOIN class_groups g ON g.id=e.group_id";
+   const selection="SELECT e.*,g.name group_name,(SELECT COUNT(*) FROM learning_attempts a WHERE a.exam_id=e.id AND a.status='submitted') submitted_count,(SELECT COUNT(*) FROM scores s WHERE s.exam_id=e.id AND e.release_policy='manual' AND e.results_released=0 AND NOT EXISTS(SELECT 1 FROM score_approvals p WHERE p.score_id=s.id)) pending_count,(SELECT COUNT(*) FROM exam_students p WHERE p.exam_id=e.id AND p.revoked=0) approved_count,COALESCE((SELECT group_concat(u.username, ', ') FROM exam_students p JOIN users u ON u.id=p.student_id WHERE p.exam_id=e.id AND p.revoked=0),'') approved_usernames FROM exams e LEFT JOIN class_groups g ON g.id=e.group_id";
    return json(u.role==='admin'?await read(db,selection+' ORDER BY e.starts_at DESC,e.id DESC LIMIT 1000'):await read(db,selection+' WHERE e.owner_id=? ORDER BY e.starts_at DESC,e.id DESC LIMIT 1000',u.id));
   }
   if(path==='/api/teaching/exams'&&method==='POST'){
@@ -131,12 +132,29 @@ export async function learningRequest(request,env,u,body={}){
    if(body.accessCode&&(!text(body.accessCode,32)||!/^[a-zA-Z0-9-]+$/.test(body.accessCode)))return json({error:'Exam code must be 1–32 letters, numbers or hyphens.'},400);
    const created=await run(db,'INSERT INTO exams(owner_id,title,paper,topic,group_id,starts_at,ends_at,duration_minutes,question_count,difficulty,release_policy,instructions) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',u.id,body.title.trim(),body.paper,body.topic,groupId,new Date(starts).toISOString().slice(0,19).replace('T',' '),new Date(ends).toISOString().slice(0,19).replace('T',' '),duration,count,difficulty,body.releasePolicy,body.instructions);await db.batch([db.prepare('UPDATE exams SET access_code=?,shuffle_options=?,blueprint_json=? WHERE id=?').bind(body.accessCode?body.accessCode.toUpperCase():null,body.shuffleOptions===false?0:1,blueprint?JSON.stringify(blueprint):null,created.meta.last_row_id),...grantStatements(db,created.meta.last_row_id,recipients,u.id)]);return json({id:created.meta.last_row_id,message:'Exam scheduled for '+recipients.length+' selected student(s). Check the approved usernames in the exam card below.'});
   }
+  const submissionPath=path.match(/^\/api\/teaching\/exams\/(\d+)\/submissions(?:\/([a-zA-Z0-9-]+)(?:\/(approve))?)?$/);
+  if(submissionPath){
+   const exam=await one(db,'SELECT * FROM exams WHERE id=?',Number(submissionPath[1]));
+   if(!owned(u,exam))return json({error:'Exam not found'},404);
+   await finalizeExam(db,exam.id);
+   const selection="SELECT a.id attemptId,a.student_id studentId,a.status,a.started_at startedAt,a.submitted_at submittedAt,u.username,COALESCE(u.display_name,u.username) name,s.id scoreId,s.score*2 marks,s.total*2 totalMarks,p.approved_at approvedAt,reviewer.username approvedBy FROM learning_attempts a JOIN users u ON u.id=a.student_id LEFT JOIN scores s ON s.attempt_id=a.id LEFT JOIN score_approvals p ON p.score_id=s.id LEFT JOIN users reviewer ON reviewer.id=p.approved_by WHERE a.exam_id=?";
+   if(!submissionPath[2]&&method==='GET')return json({exam,submissions:await read(db,selection+' ORDER BY a.submitted_at DESC,a.started_at DESC',exam.id)});
+   const a=await one(db,selection+' AND a.id=?',exam.id,submissionPath[2]);
+   if(!a)return json({error:'Submission not found'},404);
+   if(a.status!=='submitted'||!a.scoreId)return json({error:'This student has not submitted the exam yet.'},409);
+   if(method==='POST'&&submissionPath[3]==='approve'){
+    await run(db,'INSERT OR IGNORE INTO score_approvals(score_id,approved_by) VALUES (?,?)',a.scoreId,u.id);
+    return json({message:'Marks approved. This student can now see the marks and answer review on their dashboard.'});
+   }
+   if(method==='GET'&&!submissionPath[3]){const score=await one(db,'SELECT review_json FROM scores WHERE id=?',a.scoreId);return json({exam,submission:a,review:JSON.parse(score.review_json||'[]')})}
+   return json({error:'Method not allowed'},405);
+  }
   const action=path.match(/^\/api\/teaching\/exams\/(\d+)\/(release|cancel|attendance)$/);
   if(action){const exam=await one(db,'SELECT * FROM exams WHERE id=?',Number(action[1]));if(!owned(u,exam))return json({error:'Exam not found'},404);
    if(action[2]==='release'&&method==='POST'){await run(db,'UPDATE exams SET results_released=1 WHERE id=?',exam.id);return json({message:'Marks and answer reviews released to students.'})}
    if(action[2]==='cancel'&&method==='POST'){await run(db,'UPDATE exams SET cancelled=? WHERE id=?',body.cancelled===false?0:1,exam.id);return json({message:body.cancelled===false?'Exam restored.':'Exam cancelled.'})}
    if(action[2]==='attendance'&&method==='GET'){
-    if(u.role==='staff'&&!u.can_report)return json({error:'Reports are disabled by your administrator'},403);await finalizeExam(db,exam.id);
+    if(u.role==='staff'&&!u.can_report&&url.searchParams.get('format')&&url.searchParams.get('format')!=='json')return json({error:'Reports are disabled by your administrator'},403);await finalizeExam(db,exam.id);
     const students=await read(db,"SELECT u.id,u.username,COALESCE(u.display_name,u.username) name FROM users u JOIN exam_students p ON p.student_id=u.id WHERE p.exam_id=? AND p.revoked=0 AND u.role='student'",exam.id);
     const attempts=await read(db,'SELECT a.*,s.score,s.total FROM learning_attempts a LEFT JOIN scores s ON s.attempt_id=a.id WHERE a.exam_id=?',exam.id);
     const roster=students.map(s=>{const a=attempts.find(a=>a.student_id===s.id);return {id:s.id,name:s.name,username:s.username,status:a?.status==='submitted'?'Submitted':a?'In progress':Date.now()>millis(exam.ends_at)+(exam.grace_minutes||0)*60000?'Missed':'Not started',marks:a?.status==='submitted'?a.score*2:null,totalMarks:exam.question_count*2,percentage:a?.status==='submitted'?Math.round(a.score/a.total*10000)/100:null,submittedAt:a?.submitted_at||null}});
@@ -158,7 +176,7 @@ export async function learningRequest(request,env,u,body={}){
  }
  if(u.role!=='student')return json({error:'Student access required'},403);
  if(path==='/api/learning/home'&&method==='GET'){
-  const exams=await read(db,"SELECT e.*,g.name group_name,a.id attempt_id,a.status attempt_status FROM exams e LEFT JOIN class_groups g ON g.id=e.group_id LEFT JOIN learning_attempts a ON a.exam_id=e.id AND a.student_id=? WHERE e.cancelled=0 AND EXISTS(SELECT 1 FROM exam_students p WHERE p.exam_id=e.id AND p.student_id=? AND p.revoked=0) ORDER BY e.starts_at DESC LIMIT 100",u.id,u.id);
+  const exams=await read(db,"SELECT e.*,g.name group_name,a.id attempt_id,a.status attempt_status,EXISTS(SELECT 1 FROM scores s JOIN score_approvals p ON p.score_id=s.id WHERE s.attempt_id=a.id) result_approved FROM exams e LEFT JOIN class_groups g ON g.id=e.group_id LEFT JOIN learning_attempts a ON a.exam_id=e.id AND a.student_id=? WHERE e.cancelled=0 AND EXISTS(SELECT 1 FROM exam_students p WHERE p.exam_id=e.id AND p.student_id=? AND p.revoked=0) ORDER BY e.starts_at DESC LIMIT 100",u.id,u.id);
   const announcements=await read(db,'SELECT a.*,g.name group_name FROM announcements a LEFT JOIN class_groups g ON g.id=a.group_id WHERE a.archived=0 AND (a.group_id IS NULL OR EXISTS(SELECT 1 FROM group_members m WHERE m.group_id=a.group_id AND m.student_id=?)) ORDER BY a.id DESC LIMIT 100',u.id);
   const extras=await read(db,'SELECT exam_id,extra_minutes FROM accommodations WHERE student_id=?',u.id);
   const drafts=await read(db,"SELECT a.* FROM learning_attempts a JOIN exam_students p ON p.exam_id=a.exam_id AND p.student_id=a.student_id JOIN exams e ON e.id=a.exam_id WHERE a.student_id=? AND a.status='active' AND p.revoked=0 AND e.cancelled=0 ORDER BY a.started_at DESC",u.id);const active=[];for(let a of drafts){if(a.deadline&&Date.now()>=millis(a.deadline))await scoreAttempt(db,a);else active.push({id:a.id,title:topicLabel(a.paper,a.topic),mode:a.mode,deadline:iso(a.deadline)})}

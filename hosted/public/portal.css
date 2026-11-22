@@ -7,3 +7,5 @@ select,input,textarea{max-width:100%;min-width:0}label{min-width:0}h1,h2,h3{over
 fieldset{border:1px solid #d4deea;border-radius:10px;padding:18px;margin:18px 0}fieldset:disabled{opacity:.62;background:#eef2f6}fieldset:disabled button{cursor:not-allowed}.access-banner{border-left:5px solid #0e7f7a}.quote-card{background:#0b2945;color:#fff}.quote-card blockquote{font-size:1.2rem;line-height:1.7;margin:8px 0}html[data-contrast=high] fieldset:disabled{background:#111;opacity:1}
 
 .recipient-summary{padding:12px;background:#e6f3ef;border:1px solid #bfdcd2;border-radius:8px;overflow-wrap:anywhere}html[data-contrast=high] .recipient-summary{background:#111;border-color:#fff}
+
+.answer-wrong{border:2px solid #b91c1c;color:#991b1b;background:#fff1f2}.answer-correct{border-left:4px solid #15803d}.high-contrast .answer-wrong{color:#ffb4b4;background:#171717}
